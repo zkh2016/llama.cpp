@@ -1450,6 +1450,15 @@ class MiniCPMModel(Model):
             .reshape(weights.shape)
         )
 
+
+    @staticmethod
+    def permute(weights: Tensor, n_head: int, n_head_kv: int | None):
+        if n_head_kv is not None and n_head != n_head_kv:
+            n_head = n_head_kv
+        return (weights.reshape(n_head, 2, weights.shape[0] // n_head // 2, *weights.shape[1:])
+                .swapaxes(1, 2)
+                .reshape(weights.shape))
+
     def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
         del bid  # unused
 
@@ -1458,9 +1467,9 @@ class MiniCPMModel(Model):
 
         # HF models permute some of the tensors, so we need to undo that
         if name.endswith(("q_proj.weight")):
-            data_torch = self._reverse_hf_permute(data_torch, n_head, n_head)
+            data_torch = self.permute(data_torch, n_head, n_head)
         if name.endswith(("k_proj.weight")):
-            data_torch = self._reverse_hf_permute(data_torch, n_head, n_kv_head)
+            data_torch = self.permute(data_torch, n_head, n_kv_head)
 
         return [(self.map_tensor_name(name), data_torch)]
 
