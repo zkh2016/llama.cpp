@@ -178,6 +178,7 @@ struct gpt_params {
     // multimodal models (see examples/llava)
     std::string mmproj = "";        // path to multimodal projector
     std::vector<std::string> image; // path to image file(s)
+    std::string video = ""; 
 
     // server params
     int32_t port           = 8080;         // server listens on this network port

@@ -910,6 +910,14 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         params.image.emplace_back(argv[i]);
         return true;
     }
+    if (arg == "--video") {
+        if (++i >= argc) {
+            invalid_param = true;
+            return true;
+        }
+        params.video = argv[i];
+        return true;
+    }
     if (arg == "-i" || arg == "--interactive") {
         params.interactive = true;
         return true;
@@ -1867,6 +1875,7 @@ void gpt_params_print_usage(int /*argc*/, char ** argv, const gpt_params & param
     options.push_back({ "multi-modality" });
     options.push_back({ "*",           "       --mmproj FILE",          "path to a multimodal projector file for LLaVA. see examples/llava/README.md" });
     options.push_back({ "*",           "       --image FILE",           "path to an image file. use with multimodal models. Specify multiple times for batching" });
+    options.push_back({ "*",           "       --video FILE",           "path to an video file. use with multimodal models. Specify multiple times for batching" });
 
     options.push_back({ "backend" });
     options.push_back({ "*",           "       --rpc SERVERS",          "comma separated list of RPC servers" });
