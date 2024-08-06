@@ -6,8 +6,9 @@ Download [MiniCPM-V-2_6](https://huggingface.co/openbmb/MiniCPM-V-2_6) PyTorch m
 
 Clone llama.cpp:
 ```bash
-git clone https://github.com/ggerganov/llama.cpp
+git clone git@github.com:OpenBMB/llama.cpp.git
 cd llama.cpp
+git checkout minicpmv-main
 ```
 
 ### Usage of MiniCPM-V 2.6
