@@ -252,7 +252,7 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
         for (size_t i = 0; i < img_res_v.size; i++) {
             const int64_t t_img_enc_step_start_us = ggml_time_us();
             image_embd_v[i] = (float *)malloc(clip_embd_nbytes(ctx_clip));
-            int patch_size=14;
+            int patch_size = 14;
             load_image_size->width = img_res_v.data[i].nx;
             load_image_size->height = img_res_v.data[i].ny; 
             clip_add_load_image_size(ctx_clip, load_image_size);
@@ -261,7 +261,7 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
             if (has_minicpmv_projector == 2) {
                 encoded = clip_image_encode(ctx_clip, n_threads, only_v2_5_reshape_by_patch(&img_res_v.data[i], patch_size), image_embd_v[i]);
             }
-            else if (has_minicpmv_projector == 3) {
+            else {
                 encoded = clip_image_encode(ctx_clip, n_threads, &img_res_v.data[i], image_embd_v[i]);
             }            
             if (!encoded) {

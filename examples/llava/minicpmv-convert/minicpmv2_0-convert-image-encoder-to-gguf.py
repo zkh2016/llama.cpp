@@ -7,7 +7,6 @@ import torch
 import numpy as np
 from gguf import *
 import timm
-from transformers.models.idefics2.modeling_idefics2 import Idefics2VisionTransformer, Idefics2VisionConfig
 
 TEXT = "clip.text"
 VISION = "clip.vision"
@@ -86,7 +85,7 @@ ap.add_argument("--clip-model-is-vision", action="store_true", required=False,
                 help="The clip model is a pure vision model (ShareGPT4V vision extract for example)")
 ap.add_argument("--clip-model-is-openclip", action="store_true", required=False,
                 help="The clip model is from openclip (for ViT-SO400M type))")
-ap.add_argument("--minicpmv-projector", help="Path to minicpmv.projector file. If specified, save an image encoder for MiniCPM-V models.")
+ap.add_argument("--minicpmv-projector", help="Path to minicpmv.projector file. If specified, save an image encoder for minicpmv models.")
 ap.add_argument("--projector-type", help="Type of projector. Possible values: mlp, ldp, ldpv2", choices=["mlp", "ldp", "ldpv2"], default="mlp")
 ap.add_argument("-o", "--output-dir", help="Directory to save GGUF files. Default is the original model directory", default=None)
 # Example --image_mean 0.48145466 0.4578275 0.40821073 --image_std 0.26862954 0.26130258 0.27577711
@@ -135,24 +134,18 @@ if args.use_f32:
 # else:
 #     model = CLIPModel.from_pretrained(dir_model)
 #     processor = CLIPProcessor.from_pretrained(dir_model)
-
-default_vision_config = {
-        "hidden_size": 1152,
-        "image_size": 980,
-        "intermediate_size": 4304,
-        "model_type": "idefics2",
-        "num_attention_heads": 16,
-        "num_hidden_layers": 27,
-        "patch_size": 14,
-    }
-vision_config = Idefics2VisionConfig(**default_vision_config)
-model = Idefics2VisionTransformer(vision_config)
-
+model = timm.create_model(
+    "vit_so400m_patch14_siglip_384.webli",
+    pretrained=False,
+    num_classes=0,
+    dynamic_img_size=True,
+    dynamic_img_pad=True,
+)
 processor = None
-# if model.attn_pool is not None:
-#     model.attn_pool = torch.nn.Identity()
+if model.attn_pool is not None:
+    model.attn_pool = torch.nn.Identity()
 
-# model.blocks = model.blocks[:-1]
+model.blocks = model.blocks[:-1]
 model.load_state_dict(torch.load(os.path.join(dir_model, "minicpmv.clip")))
 
 fname_middle = None
@@ -166,7 +159,7 @@ elif args.minicpmv_projector is not None:
     fname_middle = "mmproj-"
     has_text_encoder = False
     has_minicpmv_projector = True
-    minicpmv_version = 2
+    minicpmv_version = 1
 elif args.vision_only:
     fname_middle = "vision-"
     has_text_encoder = False
@@ -277,11 +270,10 @@ def _replace_name_resampler(s, v):
     if re.match("resampler.pos_embed", s):
         return {
             s: v,
-            re.sub("pos_embed", "pos_embed_k", s): torch.from_numpy(get_2d_sincos_pos_embed(4096, (70, 70))),
+            re.sub("pos_embed", "pos_embed_k", s): torch.from_numpy(get_2d_sincos_pos_embed(2304, (448//14, 448//14))),
         }
     if re.match("resampler.proj", s):
         return {
-            re.sub("proj", "pos_embed_k", s): torch.from_numpy(get_2d_sincos_pos_embed(4096, (70, 70))),
             re.sub("proj", "proj.weight", s): v.transpose(-1, -2).contiguous(),
         }
     if re.match("resampler.attn.in_proj_.*", s):
@@ -326,10 +318,39 @@ if has_minicpmv_projector:
     print("Projector tensors added\n")
 
 def _replace_name(s, v):
-    s = "vision_model." + s
-    if re.match("vision_model.embeddings.position_embedding", s):
-        v = v.unsqueeze(0)
+    if re.match("blocks.([0-9]+).attn.qkv.weight", s):
+        return {
+            re.sub("blocks.([0-9]+).attn.qkv.weight", "vision_model.encoder.layers.\\1.self_attn.q_proj.weight", s): v.chunk(3, dim=0)[0],
+            re.sub("blocks.([0-9]+).attn.qkv.weight", "vision_model.encoder.layers.\\1.self_attn.k_proj.weight", s): v.chunk(3, dim=0)[1],
+            re.sub("blocks.([0-9]+).attn.qkv.weight", "vision_model.encoder.layers.\\1.self_attn.v_proj.weight", s): v.chunk(3, dim=0)[2],
+        }
+    if re.match("blocks.([0-9]+).attn.qkv.bias", s):
+        return {
+            re.sub("blocks.([0-9]+).attn.qkv.bias", "vision_model.encoder.layers.\\1.self_attn.q_proj.bias", s): v.chunk(3, dim=0)[0],
+            re.sub("blocks.([0-9]+).attn.qkv.bias", "vision_model.encoder.layers.\\1.self_attn.k_proj.bias", s): v.chunk(3, dim=0)[1],
+            re.sub("blocks.([0-9]+).attn.qkv.bias", "vision_model.encoder.layers.\\1.self_attn.v_proj.bias", s): v.chunk(3, dim=0)[2],
+        }
+    if re.match("pos_embed", s):
+        from timm.layers import resample_abs_pos_embed
+        s = re.sub("pos_embed", "vision_model.embeddings.position_embedding.weight", s)
+        v = resample_abs_pos_embed(v, (448//14, 448//14), num_prefix_tokens=0)
         return {s: v}
+
+    s = re.sub("patch_embed.proj.weight", "vision_model.embeddings.patch_embedding.weight", s)
+    s = re.sub("patch_embed.proj.bias", "vision_model.embeddings.patch_embedding.bias", s)
+
+    # norm
+    s = re.sub("blocks.([0-9]+).norm([0-9]+).weight", "vision_model.encoder.layers.\\1.layer_norm\\2.weight", s)
+    s = re.sub("blocks.([0-9]+).norm([0-9]+).bias", "vision_model.encoder.layers.\\1.layer_norm\\2.bias", s)
+
+    s = re.sub("blocks.([0-9]+).attn.proj.weight", "vision_model.encoder.layers.\\1.self_attn.out_proj.weight", s)
+    s = re.sub("blocks.([0-9]+).attn.proj.bias", "vision_model.encoder.layers.\\1.self_attn.out_proj.bias", s)
+
+    s = re.sub("blocks.([0-9]+).mlp.fc([0-9]+).weight", "vision_model.encoder.layers.\\1.mlp.fc\\2.weight", s)
+    s = re.sub("blocks.([0-9]+).mlp.fc([0-9]+).bias", "vision_model.encoder.layers.\\1.mlp.fc\\2.bias", s)
+
+    s = re.sub("norm.weight", "vision_model.post_layernorm.weight", s)
+    s = re.sub("norm.bias", "vision_model.post_layernorm.bias", s)
 
     return {s: v}
 

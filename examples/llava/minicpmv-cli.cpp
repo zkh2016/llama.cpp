@@ -9,12 +9,12 @@
 #include <cstdlib>
 #include <vector>
 
-extern "C" {
-    #include <libavcodec/avcodec.h>
-    #include <libavformat/avformat.h>
-    #include <libavutil/imgutils.h>
-    #include <libswscale/swscale.h>
-}
+// extern "C" {
+//     #include <libavcodec/avcodec.h>
+//     #include <libavformat/avformat.h>
+//     #include <libavutil/imgutils.h>
+//     #include <libswscale/swscale.h>
+// }
 
 struct llava_context {
     struct clip_ctx * ctx_clip = NULL;
@@ -28,133 +28,133 @@ struct clip_image_u8 {
     std::vector<uint8_t> buf;
 };
 
-static std::vector<clip_image_u8 *> extract_frames(const std::string& video_path) {
-    AVFormatContext* format_ctx = nullptr;
-    if (avformat_open_input(&format_ctx, video_path.c_str(), nullptr, nullptr) < 0) {
-        LOG_TEE("Could not open video file.");
-        return {};
-    }
+// static std::vector<clip_image_u8 *> extract_frames(const std::string& video_path) {
+//     AVFormatContext* format_ctx = nullptr;
+//     if (avformat_open_input(&format_ctx, video_path.c_str(), nullptr, nullptr) < 0) {
+//         LOG_TEE("Could not open video file.");
+//         return {};
+//     }
 
-    if (avformat_find_stream_info(format_ctx, nullptr) < 0) {
-        LOG_TEE("Could not find stream information.");
-        avformat_close_input(&format_ctx);
-        return {};
-    }
+//     if (avformat_find_stream_info(format_ctx, nullptr) < 0) {
+//         LOG_TEE("Could not find stream information.");
+//         avformat_close_input(&format_ctx);
+//         return {};
+//     }
 
-    const AVCodec* codec = nullptr;
-    AVCodecContext* codec_ctx = nullptr;
-    int video_stream_index = -1;
+//     const AVCodec* codec = nullptr;
+//     AVCodecContext* codec_ctx = nullptr;
+//     int video_stream_index = -1;
 
-    // Find the video stream
-    for (size_t i = 0; i < format_ctx->nb_streams; ++i) {
-        if (format_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-            codec = avcodec_find_decoder(format_ctx->streams[i]->codecpar->codec_id);
-            if (codec) {
-                video_stream_index = i;
-                break;
-            }
-        }
-    }
+//     // Find the video stream
+//     for (size_t i = 0; i < format_ctx->nb_streams; ++i) {
+//         if (format_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+//             codec = avcodec_find_decoder(format_ctx->streams[i]->codecpar->codec_id);
+//             if (codec) {
+//                 video_stream_index = i;
+//                 break;
+//             }
+//         }
+//     }
 
-    if (video_stream_index == -1) {
-        LOG_TEE("Could not find video stream.");
-        avformat_close_input(&format_ctx);
-        return {};
-    }
+//     if (video_stream_index == -1) {
+//         LOG_TEE("Could not find video stream.");
+//         avformat_close_input(&format_ctx);
+//         return {};
+//     }
 
-    codec_ctx = avcodec_alloc_context3(codec);
-    if (!codec_ctx) {
-        LOG_TEE("Could not allocate video codec context.");
-        avformat_close_input(&format_ctx);
-        return {};
-    }
+//     codec_ctx = avcodec_alloc_context3(codec);
+//     if (!codec_ctx) {
+//         LOG_TEE("Could not allocate video codec context.");
+//         avformat_close_input(&format_ctx);
+//         return {};
+//     }
 
-    if (avcodec_parameters_to_context(codec_ctx, format_ctx->streams[video_stream_index]->codecpar) < 0) {
-        LOG_TEE("Could not copy codec parameters to codec context.");
-        avcodec_free_context(&codec_ctx);
-        avformat_close_input(&format_ctx);
-        return {};
-    }
+//     if (avcodec_parameters_to_context(codec_ctx, format_ctx->streams[video_stream_index]->codecpar) < 0) {
+//         LOG_TEE("Could not copy codec parameters to codec context.");
+//         avcodec_free_context(&codec_ctx);
+//         avformat_close_input(&format_ctx);
+//         return {};
+//     }
 
-    if (avcodec_open2(codec_ctx, codec, nullptr) < 0) {
-        LOG_TEE("Could not open codec.");
-        avcodec_free_context(&codec_ctx);
-        avformat_close_input(&format_ctx);
-        return {};
-    }
+//     if (avcodec_open2(codec_ctx, codec, nullptr) < 0) {
+//         LOG_TEE("Could not open codec.");
+//         avcodec_free_context(&codec_ctx);
+//         avformat_close_input(&format_ctx);
+//         return {};
+//     }
 
-    AVFrame* frame = av_frame_alloc();
-    AVFrame* frame_rgb = av_frame_alloc();
-    if (!frame || !frame_rgb) {
-        LOG_TEE("Could not allocate frames.");
-        av_frame_free(&frame);
-        av_frame_free(&frame_rgb);
-        avcodec_free_context(&codec_ctx);
-        avformat_close_input(&format_ctx);
-        return {};
-    }
+//     AVFrame* frame = av_frame_alloc();
+//     AVFrame* frame_rgb = av_frame_alloc();
+//     if (!frame || !frame_rgb) {
+//         LOG_TEE("Could not allocate frames.");
+//         av_frame_free(&frame);
+//         av_frame_free(&frame_rgb);
+//         avcodec_free_context(&codec_ctx);
+//         avformat_close_input(&format_ctx);
+//         return {};
+//     }
 
-    int num_bytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, codec_ctx->width, codec_ctx->height, 1);
-    uint8_t* buffer = (uint8_t*)av_malloc(num_bytes * sizeof(uint8_t));
-    av_image_fill_arrays(frame_rgb->data, frame_rgb->linesize, buffer, AV_PIX_FMT_RGB24, codec_ctx->width, codec_ctx->height, 1);
+//     int num_bytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, codec_ctx->width, codec_ctx->height, 1);
+//     uint8_t* buffer = (uint8_t*)av_malloc(num_bytes * sizeof(uint8_t));
+//     av_image_fill_arrays(frame_rgb->data, frame_rgb->linesize, buffer, AV_PIX_FMT_RGB24, codec_ctx->width, codec_ctx->height, 1);
 
-    struct SwsContext* sws_ctx = sws_getContext(codec_ctx->width, codec_ctx->height, codec_ctx->pix_fmt,
-                                                codec_ctx->width, codec_ctx->height, AV_PIX_FMT_RGB24,
-                                                SWS_BILINEAR, nullptr, nullptr, nullptr);
+//     struct SwsContext* sws_ctx = sws_getContext(codec_ctx->width, codec_ctx->height, codec_ctx->pix_fmt,
+//                                                 codec_ctx->width, codec_ctx->height, AV_PIX_FMT_RGB24,
+//                                                 SWS_BILINEAR, nullptr, nullptr, nullptr);
 
-    std::vector<clip_image_u8 *> frames;
+//     std::vector<clip_image_u8 *> frames;
 
-    AVPacket packet;
-    int64_t last_pts = AV_NOPTS_VALUE;
-    int64_t total_frames = format_ctx->streams[video_stream_index]->nb_frames;
-    // LOG_TEE("total_frames: %lld\n", total_frames);
+//     AVPacket packet;
+//     int64_t last_pts = AV_NOPTS_VALUE;
+//     int64_t total_frames = format_ctx->streams[video_stream_index]->nb_frames;
+//     // LOG_TEE("total_frames: %lld\n", total_frames);
 
-    int64_t frame_interval = (int64_t)codec_ctx->framerate.num / codec_ctx->framerate.den;
-    // LOG_TEE("frame_interval: %lld\n", frame_interval);
-    // LOG_TEE("codec_ctx->framerate.num: %lld\n", codec_ctx->framerate.num);
-    // LOG_TEE("codec_ctx->framerate.den: %lld\n", codec_ctx->framerate.den);
+//     int64_t frame_interval = (int64_t)codec_ctx->framerate.num / codec_ctx->framerate.den;
+//     // LOG_TEE("frame_interval: %lld\n", frame_interval);
+//     // LOG_TEE("codec_ctx->framerate.num: %lld\n", codec_ctx->framerate.num);
+//     // LOG_TEE("codec_ctx->framerate.den: %lld\n", codec_ctx->framerate.den);
 
-    float frame_len = 1.0 * total_frames / frame_interval;
-    LOG_TEE("frame_len: %f\n", frame_len);
-    if(frame_len > 15){
-        frame_interval = (int64_t)(1.0 * total_frames / 15);
-    }
-    // LOG_TEE("frame_interval: %lld\n", frame_interval);
-    int frame_idx = 0;
-    while (av_read_frame(format_ctx, &packet) >= 0) {
-        if (packet.stream_index == video_stream_index) {
-            if (avcodec_send_packet(codec_ctx, &packet) == 0) {
-                for(;avcodec_receive_frame(codec_ctx, frame) == 0;frame_idx++) {
-                    // int frame_idx = frame->pts/codec_ctx->framerate.den;
-                    // LOG_TEE("frame_idx: %d %d\n", frame_idx, frame_idx % frame_interval);
-                    if (frame->pts != last_pts && (frame_idx) % frame_interval == 0) {
-                        sws_scale(sws_ctx, frame->data, frame->linesize, 0, codec_ctx->height,
-                                  frame_rgb->data, frame_rgb->linesize);
+//     float frame_len = 1.0 * total_frames / frame_interval;
+//     LOG_TEE("frame_len: %f\n", frame_len);
+//     if(frame_len > 15){
+//         frame_interval = (int64_t)(1.0 * total_frames / 15);
+//     }
+//     // LOG_TEE("frame_interval: %lld\n", frame_interval);
+//     int frame_idx = 0;
+//     while (av_read_frame(format_ctx, &packet) >= 0) {
+//         if (packet.stream_index == video_stream_index) {
+//             if (avcodec_send_packet(codec_ctx, &packet) == 0) {
+//                 for(;avcodec_receive_frame(codec_ctx, frame) == 0;frame_idx++) {
+//                     // int frame_idx = frame->pts/codec_ctx->framerate.den;
+//                     // LOG_TEE("frame_idx: %d %d\n", frame_idx, frame_idx % frame_interval);
+//                     if (frame->pts != last_pts && (frame_idx) % frame_interval == 0) {
+//                         sws_scale(sws_ctx, frame->data, frame->linesize, 0, codec_ctx->height,
+//                                   frame_rgb->data, frame_rgb->linesize);
 
-                        clip_image_u8 * img = clip_image_u8_init();
-                        img->nx = codec_ctx->width;
-                        img->ny = codec_ctx->height;
-                        img->buf.resize(num_bytes);
-                        std::copy(buffer, buffer + num_bytes, img->buf.begin());
+//                         clip_image_u8 * img = clip_image_u8_init();
+//                         img->nx = codec_ctx->width;
+//                         img->ny = codec_ctx->height;
+//                         img->buf.resize(num_bytes);
+//                         std::copy(buffer, buffer + num_bytes, img->buf.begin());
 
-                        frames.push_back(img);
-                        last_pts = frame->pts;
-                    }
-                }
-            }
-        }
-        av_packet_unref(&packet);
-    }
+//                         frames.push_back(img);
+//                         last_pts = frame->pts;
+//                     }
+//                 }
+//             }
+//         }
+//         av_packet_unref(&packet);
+//     }
 
-    av_free(buffer);
-    av_frame_free(&frame_rgb);
-    av_frame_free(&frame);
-    avcodec_free_context(&codec_ctx);
-    avformat_close_input(&format_ctx);
-    sws_freeContext(sws_ctx);
+//     av_free(buffer);
+//     av_frame_free(&frame_rgb);
+//     av_frame_free(&frame);
+//     avcodec_free_context(&codec_ctx);
+//     avformat_close_input(&format_ctx);
+//     sws_freeContext(sws_ctx);
 
-    return frames;
-}
+//     return frames;
+// }
 
 static void show_additional_info(int /*argc*/, char ** argv) {
     LOG_TEE("\n example usage: %s -m <llava-v1.5-7b/ggml-model-q5_k.gguf> --mmproj <llava-v1.5-7b/mmproj-model-f16.gguf> [--video <path/to/an/video.mp4>] [--image <path/to/an/image.jpg>] [--image <path/to/another/image.jpg>] [--temp 0.1] [-p \"describe the image in detail.\"]\n", argv[0]);
@@ -471,39 +471,39 @@ int main(int argc, char ** argv) {
     int n_past = 0;
     struct llava_context * ctx_llava = nullptr;
 
-    if (params.video.size() > 0){
-        ctx_llava = llava_init_context(&params);
-        auto video = params.video;        
-        std::vector<clip_image_u8 *> frames = extract_frames(video.c_str());
-        process_prompt(0, ctx_llava, &params, n_past);
-        // LOG_TEE("frames.size: %zu\n", frames.size());
-        for (size_t i = 0; i < frames.size(); ++i) {
-            auto embeds = video_image_embed(ctx_llava->ctx_clip, &params, frames[i]);
-            process_input(ctx_llava, &params, 1, "", n_past, embeds);
-        }
-        process_input(ctx_llava, &params, 0, params.prompt.c_str(), n_past);
-        process_prompt(2, ctx_llava, &params, n_past);
+    // if (params.video.size() > 0){
+    //     ctx_llava = llava_init_context(&params);
+    //     auto video = params.video;        
+    //     std::vector<clip_image_u8 *> frames = extract_frames(video.c_str());
+    //     process_prompt(0, ctx_llava, &params, n_past);
+    //     // LOG_TEE("frames.size: %zu\n", frames.size());
+    //     for (size_t i = 0; i < frames.size(); ++i) {
+    //         auto embeds = video_image_embed(ctx_llava->ctx_clip, &params, frames[i]);
+    //         process_input(ctx_llava, &params, 1, "", n_past, embeds);
+    //     }
+    //     process_input(ctx_llava, &params, 0, params.prompt.c_str(), n_past);
+    //     process_prompt(2, ctx_llava, &params, n_past);
 
-        struct llama_sampling_context * ctx_sampling = llama_sampling_init(params.sparams);
-        const int max_tgt_len = params.n_predict < 0 ? 8192 : params.n_predict;
-        std::string response = "";
-        bool have_tmp = false;
-        for (int i = 0; i < max_tgt_len; i++) {
-            auto tmp = llama_loop(ctx_llava, ctx_sampling, n_past);
-            response += tmp;
-            if (strcmp(tmp, "</s>") == 0){
-                if(!have_tmp)continue;
-                else break;
-            }
-            have_tmp = true;
-            printf("%s", tmp);
-            if (strstr(response.c_str(), "<user>")) break; // minicpm-v 
+    //     struct llama_sampling_context * ctx_sampling = llama_sampling_init(params.sparams);
+    //     const int max_tgt_len = params.n_predict < 0 ? 8192 : params.n_predict;
+    //     std::string response = "";
+    //     bool have_tmp = false;
+    //     for (int i = 0; i < max_tgt_len; i++) {
+    //         auto tmp = llama_loop(ctx_llava, ctx_sampling, n_past);
+    //         response += tmp;
+    //         if (strcmp(tmp, "</s>") == 0){
+    //             if(!have_tmp)continue;
+    //             else break;
+    //         }
+    //         have_tmp = true;
+    //         printf("%s", tmp);
+    //         if (strstr(response.c_str(), "<user>")) break; // minicpm-v 
 
-            fflush(stdout);
-        }
-        llama_sampling_free(ctx_sampling);
-    }
-    else {
+    //         fflush(stdout);
+    //     }
+    //     llama_sampling_free(ctx_sampling);
+    // }
+    // else {
         if (params.image.size() > 1) {
             ctx_llava = llava_init_context(&params);
             process_prompt(0, ctx_llava, &params, n_past);
@@ -585,7 +585,7 @@ int main(int argc, char ** argv) {
 
         ctx_llava->model = NULL;
         llava_free(ctx_llava);
-    }
+    // }
 
     return 0;
 }
