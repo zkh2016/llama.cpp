@@ -272,7 +272,7 @@ static bool eval_string(struct llama_context * ctx_llama, const char* str, int n
 static void process_eval_image_embed(struct llava_context * ctx_llava, const struct llava_image_embed * embeds, int n_batch, int * n_past, int idx) {
     float * image_embed = (float *)malloc(clip_embd_nbytes(ctx_llava->ctx_clip));
     std::memcpy(image_embed, embeds->embed + idx * clip_n_patches(ctx_llava->ctx_clip) * clip_n_mmproj_embd(ctx_llava->ctx_clip), clip_embd_nbytes(ctx_llava->ctx_clip));
-    
+
     auto slice_embed = (llava_image_embed*)malloc(sizeof(llava_image_embed));
     slice_embed->embed = image_embed;
     slice_embed->n_image_pos = clip_n_patches(ctx_llava->ctx_clip);
@@ -440,7 +440,7 @@ static struct llama_sampling_context * llama_init(struct llava_context * ctx_lla
 }
 
 static const char * llama_loop(struct llava_context * ctx_llava,struct llama_sampling_context * ctx_sampling, int &n_past){
-    
+
     const char * tmp = sample(ctx_sampling, ctx_llava->ctx_llama, &n_past);
     return tmp;
 }
@@ -581,7 +581,7 @@ int main(int argc, char ** argv) {
             }
         }
         printf("\n");
-        llama_print_timings(ctx_llava->ctx_llama);        
+        llama_print_timings(ctx_llava->ctx_llama);
 
         ctx_llava->model = NULL;
         llava_free(ctx_llava);

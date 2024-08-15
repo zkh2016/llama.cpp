@@ -254,7 +254,7 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
             image_embd_v[i] = (float *)malloc(clip_embd_nbytes(ctx_clip));
             int patch_size = 14;
             load_image_size->width = img_res_v.data[i].nx;
-            load_image_size->height = img_res_v.data[i].ny; 
+            load_image_size->height = img_res_v.data[i].ny;
             clip_add_load_image_size(ctx_clip, load_image_size);
             bool encoded = false;
             int has_minicpmv_projector = clip_is_minicpmv(ctx_clip);
@@ -263,7 +263,7 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
             }
             else {
                 encoded = clip_image_encode(ctx_clip, n_threads, &img_res_v.data[i], image_embd_v[i]);
-            }            
+            }
             if (!encoded) {
                 LOG_TEE("Unable to encode image - spatial_unpad - subimage %d of %d\n", (int) i+1, (int) img_res_v.size);
                 return false;
@@ -285,7 +285,7 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
         }
         image_embd_v.clear();
         load_image_size->width = img->nx;
-        load_image_size->height = img->ny; 
+        load_image_size->height = img->ny;
         clip_add_load_image_size(ctx_clip, load_image_size);
         LOG_TEE("%s: load_image_size %d %d\n", __func__, load_image_size->width, load_image_size->height);
     }
@@ -299,7 +299,7 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
 
             return false;
         }
-    } 
+    }
     else {
         // spatial_unpad llava-1.6 type embedding
         // TODO: CLIP needs batching support - in HF the llm projection is separate after encoding, which might be a solution to quickly get batching working
