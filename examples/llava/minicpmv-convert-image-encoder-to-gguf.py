@@ -551,7 +551,9 @@ elif minicpmv_version == 2:
     emb_dim = 4096
 elif minicpmv_version == 3:
     emb_dim = 3584
-
+elif minicpmv_version == 4:
+    emb_dim = 4096
+    
 default_vision_config = {
         "hidden_size": 1152,
         "image_size": 980,
@@ -567,7 +569,10 @@ model = Idefics2VisionTransformer(vision_config)
 if minicpmv_version == 3:
     vision_config = SiglipVisionConfig(**default_vision_config)
     model = SiglipVisionTransformer(vision_config)
-
+elif minicpmv_version == 4:
+    vision_config = SiglipVisionConfig(**default_vision_config)
+    model = SiglipVisionTransformer(vision_config)
+    
 processor = None
 # if model.attn_pool is not None:
 #     model.attn_pool = torch.nn.Identity()
@@ -587,7 +592,6 @@ elif args.minicpmv_projector is not None:
     fname_middle = "mmproj-"
     has_text_encoder = False
     has_minicpmv_projector = True
-    minicpmv_version = 3
 elif args.vision_only:
     fname_middle = "vision-"
     has_text_encoder = False
