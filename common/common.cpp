@@ -2165,7 +2165,9 @@ struct llama_init_result llama_init_from_gpt_params(gpt_params & params) {
             tmp.clear();
             tmp.push_back(decoder_start_token_id);
         }
-        llama_decode(lctx, llama_batch_get_one(tmp.data(), std::min(tmp.size(), (size_t) params.n_batch), 0, 0));
+        if (llama_model_has_decoder(model)) {
+            llama_decode(lctx, llama_batch_get_one(tmp.data(), std::min(tmp.size(), (size_t) params.n_batch), 0, 0));
+        }
         llama_kv_cache_clear(lctx);
         llama_synchronize(lctx);
         llama_reset_timings(lctx);
@@ -2707,12 +2709,6 @@ std::string llama_detokenize(llama_context * ctx, const std::vector<llama_token>
 
     // NOTE: the original tokenizer decodes bytes after collecting the pieces.
     return text;
-}
-
-bool llama_should_add_bos_token(const llama_model * model) {
-    const int add_bos = llama_add_bos_token(model);
-
-    return add_bos != -1 ? bool(add_bos) : (llama_vocab_type(model) == LLAMA_VOCAB_TYPE_SPM);
 }
 
 //
