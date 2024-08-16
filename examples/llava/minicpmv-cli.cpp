@@ -293,6 +293,7 @@ static int process_image(struct llava_context * ctx_llava, struct llava_image_em
         }
         res = eval_string(ctx_llava->ctx_llama, std::string("</slice>").c_str(), params->n_batch, &n_past, false);
     }
+    res = eval_string(ctx_llava->ctx_llama, std::string("\n").c_str(), params->n_batch, &n_past, false);
     LOG_TEE("%s: image token past: %d\n", __func__, n_past);
     if(!res) return 0;
     return n_past;
