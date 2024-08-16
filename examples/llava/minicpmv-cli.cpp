@@ -167,17 +167,6 @@ static void llama_log_callback_logTee(ggml_log_level level, const char * text, v
     LOG_TEE("%s", text);
 }
 
-static struct clip_ctx * clip_init_context(gpt_params * params) {
-    const char * clip_path = params->mmproj.c_str();
-
-    auto prompt = params->prompt;
-    if (prompt.empty()) {
-        prompt = "describe the image in detail.";
-    }
-    auto ctx_clip = clip_model_load(clip_path, /*verbosity=*/ 1);
-    return ctx_clip;
-}
-
 static struct llama_model * llava_init(gpt_params * params) {
     llama_backend_init();
     llama_numa_init(params->numa);
@@ -390,8 +379,8 @@ static const char * sample(struct llama_sampling_context * ctx_sampling,
 }
 
 static struct llava_context * minicpmv_init(gpt_params * params, const std::string & fname, int &n_past){
-    auto ctx_clip = clip_init_context(params);
-    auto embeds = llava_image_embed_make_with_filename(ctx_clip, params->n_threads, fname.c_str());
+    auto ctx_llava = llava_init_context(params);
+    auto embeds = llava_image_embed_make_with_filename(ctx_llava->ctx_clip, params->n_threads, fname.c_str());
     if (!embeds) {
         LOG_TEE("error: failed to load image %s. Terminating\n\n", fname.c_str());
         return NULL;
@@ -404,8 +393,7 @@ static struct llava_context * minicpmv_init(gpt_params * params, const std::stri
     }
 
     const int64_t t_llava_init_start_us = ggml_time_us();
-    auto ctx_llava = llava_init_context(params);
-    ctx_llava->ctx_clip = ctx_clip;
+
     const int64_t t_llava_init_end_us = ggml_time_us();
     float t_llava_init_ms = (t_llava_init_end_us - t_llava_init_start_us) / 1000.0;
     LOG_TEE("\n%s: llava init in %8.2f ms.\n", __func__, t_llava_init_ms);
@@ -545,8 +533,8 @@ int main(int argc, char ** argv) {
             if (!params.prompt.empty()) {
                 LOG_TEE("<user>%s\n", params.prompt.c_str());
                 LOG_TEE("<assistant>");
-                auto ctx_sampling = llama_init(ctx_llava, &params, params.prompt.c_str(), n_past, true);
-                const int max_tgt_len = params.n_predict < 0 ? 256 : params.n_predict;
+                auto ctx_sampling = llama_init(ctx_llava, &params, params.prompt.c_str(), n_past, false);
+                const int max_tgt_len = params.n_predict < 0 ? 8192 : params.n_predict;
                 std::string response = "";
                 bool have_tmp = false;
                 for (int i = 0; i < max_tgt_len; i++) {
