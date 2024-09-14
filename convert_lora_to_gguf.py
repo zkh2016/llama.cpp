@@ -222,9 +222,9 @@ class LoraTorchTensor:
 
 
 def get_base_tensor_name(lora_tensor_name: str) -> str:
-    base_name = lora_tensor_name.replace("base_model.model.", "")
-    base_name = base_name.replace(".lora_A.weight", ".weight")
-    base_name = base_name.replace(".lora_B.weight", ".weight")
+    base_name = lora_tensor_name.replace("base_model.model.llm.", "")
+    base_name = base_name.replace(".lora_A.default.weight", ".weight")
+    base_name = base_name.replace(".lora_B.default.weight", ".weight")
     return base_name
 
 
@@ -338,8 +338,10 @@ if __name__ == '__main__':
                     if self.lazy:
                         tensor = LazyTorchTensor.from_eager(tensor)
                     base_name = get_base_tensor_name(name)
-                    is_lora_a = ".lora_A.weight" in name
-                    is_lora_b = ".lora_B.weight" in name
+                    is_lora_a = ".lora_A.default.weight" in name
+                    is_lora_b = ".lora_B.default.weight" in name
+                    print(base_name, tensor, is_lora_a, is_lora_b)
+                    assert tensor is not None
                     if not is_lora_a and not is_lora_b:
                         if ".base_layer.weight" in name:
                             continue
@@ -351,13 +353,17 @@ if __name__ == '__main__':
                             tensor_map[base_name].A = tensor
                         else:
                             tensor_map[base_name].B = tensor
+                            assert tensor is not None
+
                     else:
                         if is_lora_a:
                             tensor_map[base_name] = PartialLoraTensor(A=tensor)
                         else:
                             tensor_map[base_name] = PartialLoraTensor(B=tensor)
-
+                            assert tensor is not None
+                print()
                 for name, tensor in tensor_map.items():
+                    print(name, tensor)
                     assert tensor.A is not None
                     assert tensor.B is not None
                     yield (name, cast(torch.Tensor, LoraTorchTensor(tensor.A, tensor.B)))
