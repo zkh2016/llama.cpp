@@ -77,10 +77,28 @@ static struct llava_context * llava_init_context(gpt_params * params) {
     }
 
     llama_context * ctx_llama = llama_new_context_with_model(model, ctx_params);
-
+    
     if (ctx_llama == NULL) {
         LOG_TEE("%s: error: failed to create the llama_context\n" , __func__);
         return NULL;
+    }
+
+    for (unsigned int i = 0; i < params->lora_adapter.size(); ++i) {
+        const std::string & lora_adapter = std::get<0>(params->lora_adapter[i]);
+        float lora_scale = std::get<1>(params->lora_adapter[i]);
+        int err = llama_model_apply_lora_from_file(model,
+                                             lora_adapter.c_str(),
+                                             lora_scale,
+                                             ((i > 0) || params->lora_base.empty())
+                                                ? NULL
+                                                : params->lora_base.c_str(),
+                                             params->n_threads);
+        if (err != 0) {
+            fprintf(stderr, "%s: error: failed to apply lora adapter\n", __func__);
+            // llama_free(lctx);
+            // llama_free_model(model);
+            // return std::make_tuple(nullptr, nullptr);
+        }
     }
 
     auto ctx_llava = (struct llava_context *)malloc(sizeof(llava_context));

@@ -60,7 +60,7 @@ if __name__ == '__main__':
     output_path = os.path.join(sys.argv[1], "ggml-adapter-model.bin")
 
     if os.path.exists(input_model):
-        model = torch.load(input_model, map_location="cpu")
+        model = torch.load(input_model, map_location="cpu", weights_only=True)
     else:
         input_model = os.path.join(sys.argv[1], "adapter_model.safetensors")
         # lazy import load_file only if lora is in safetensors format.
@@ -75,7 +75,6 @@ if __name__ == '__main__':
 
     arch = list(gguf.MODEL_ARCH_NAMES.keys())[list(gguf.MODEL_ARCH_NAMES.values()).index(arch_name)]
     name_map = gguf.TensorNameMap(arch, 200) # 200 layers ought to be enough for anyone
-
     with open(input_json, "r") as f:
         params = json.load(f)
 
@@ -103,6 +102,7 @@ if __name__ == '__main__':
         write_file_header(fout, params)
         for k, v in model.items():
             orig_k = k
+            print(orig_k)
             if k.endswith(".default.weight"):
                 k = k.replace(".default.weight", ".weight")
             if k in ["llama_proj.weight", "llama_proj.bias"]:
@@ -119,16 +119,23 @@ if __name__ == '__main__':
             prefix = "base_model.model."
             if k.startswith(prefix):
                 k = k[len(prefix) :]
+            prefix = "llm."
+            if k.startswith(prefix):
+                k = k[len(prefix) :]
 
-            lora_suffixes = (".lora_A.weight", ".lora_B.weight")
+            lora_suffixes = (".lora_A.weight", ".lora_B.weight", ".lora_A.default.weight", ".lora_B.default.weight")
+            print("k:", k)
             if k.endswith(lora_suffixes):
                 suffix = k[-len(lora_suffixes[0]):]
                 k = k[: -len(lora_suffixes[0])]
             else:
                 print(f"Error: unrecognized tensor name {orig_k}")
                 sys.exit(1)
+            print("k:", k)
 
             tname = name_map.get_name(k)
+            #model.layers.139.self_attn.v_proj'
+            #llm.model.layers.0.self_attn.q_proj
             if tname is None:
                 print(f"Error: could not map tensor name {orig_k}")
                 print(" Note: the arch parameter must be specified if the model is not llama")
