@@ -2229,6 +2229,9 @@ struct llama_context {
         ggml_backend_buffer_free(buf_output);
     }
 
+    void set_model2(const llama_model* model){
+        model2 = model;
+    }
     llama_cparams cparams;
 
     std::vector<ggml_backend_t> backends;
@@ -2238,6 +2241,7 @@ struct llama_context {
     ggml_backend_t backend_cpu = nullptr;
 
     const llama_model & model;
+    const llama_model * model2 = nullptr;
 
     // key + value cache for the self attention
     struct llama_kv_cache kv_self;
@@ -6443,6 +6447,7 @@ static struct ggml_tensor * llm_build_kv(
 
 struct llm_build_context {
     const llama_model    & model;
+    const llama_model    *model2;
           llama_context  & lctx;
     const llama_hparams  & hparams;
     const llama_cparams  & cparams;
@@ -6493,6 +6498,7 @@ struct llm_build_context {
     const llm_build_cb & cb,
                   bool   worst_case) :
         model            (lctx.model),
+        model2           (lctx.model2),
         lctx             (lctx),
         hparams          (model.hparams),
         cparams          (lctx.cparams),
@@ -6750,33 +6756,40 @@ struct llm_build_context {
         for (int il = 0; il < n_layer; ++il) {
             struct ggml_tensor * inpSA = inpL;
 
+            const llama_model *m = &model;
+            int local_il = il;
+            if(il >= 16 && model2 != nullptr){//TODO: && is_vit
+                m = model2;
+                // local_il = il - 16;
+            }
+
             // norm
             cur = llm_build_norm(ctx0, inpL, hparams,
-                    model.layers[il].attn_norm, NULL,
+                    m->layers[local_il].attn_norm, NULL,
                     LLM_NORM_RMS, cb, il);
             cb(cur, "attn_norm", il);
 
             // self-attention
             {
                 // compute Q and K and RoPE them
-                struct ggml_tensor * Qcur = ggml_mul_mat(ctx0, model.layers[il].wq, cur);
+                struct ggml_tensor * Qcur = ggml_mul_mat(ctx0, m->layers[local_il].wq, cur);
                 cb(Qcur, "Qcur", il);
-                if (model.layers[il].bq) {
-                    Qcur = ggml_add(ctx0, Qcur, model.layers[il].bq);
+                if (m->layers[local_il].bq) {
+                    Qcur = ggml_add(ctx0, Qcur, m->layers[local_il].bq);
                     cb(Qcur, "Qcur", il);
                 }
 
-                struct ggml_tensor * Kcur = ggml_mul_mat(ctx0, model.layers[il].wk, cur);
+                struct ggml_tensor * Kcur = ggml_mul_mat(ctx0, m->layers[local_il].wk, cur);
                 cb(Kcur, "Kcur", il);
-                if (model.layers[il].bk) {
-                    Kcur = ggml_add(ctx0, Kcur, model.layers[il].bk);
+                if (m->layers[local_il].bk) {
+                    Kcur = ggml_add(ctx0, Kcur, m->layers[local_il].bk);
                     cb(Kcur, "Kcur", il);
                 }
 
-                struct ggml_tensor * Vcur = ggml_mul_mat(ctx0, model.layers[il].wv, cur);
+                struct ggml_tensor * Vcur = ggml_mul_mat(ctx0, m->layers[local_il].wv, cur);
                 cb(Vcur, "Vcur", il);
-                if (model.layers[il].bv) {
-                    Vcur = ggml_add(ctx0, Vcur, model.layers[il].bv);
+                if (m->layers[local_il].bv) {
+                    Vcur = ggml_add(ctx0, Vcur, m->layers[local_il].bv);
                     cb(Vcur, "Vcur", il);
                 }
 
@@ -6794,8 +6807,8 @@ struct llm_build_context {
                 );
                 cb(Kcur, "Kcur", il);
 
-                cur = llm_build_kv(ctx0, model, hparams, kv_self, gf,
-                        model.layers[il].wo, model.layers[il].bo,
+                cur = llm_build_kv(ctx0, *m, hparams, kv_self, gf,
+                        m->layers[local_il].wo, m->layers[local_il].bo,
                         Kcur, Vcur, Qcur, KQ_mask, nullptr, n_ctx, n_tokens, kv_head, n_kv, 1.0f/sqrtf(float(n_embd_head)), cb, il);
             }
 
@@ -6811,31 +6824,31 @@ struct llm_build_context {
             cb(ffn_inp, "ffn_inp", il);
 
             // feed-forward network
-            if (model.layers[il].ffn_gate_inp == nullptr) {
+            if (m->layers[local_il].ffn_gate_inp == nullptr) {
                 cur = llm_build_norm(ctx0, ffn_inp, hparams,
-                        model.layers[il].ffn_norm, NULL,
+                        m->layers[local_il].ffn_norm, NULL,
                         LLM_NORM_RMS, cb, il);
                 cb(cur, "ffn_norm", il);
 
                 cur = llm_build_ffn(ctx0, cur,
-                        model.layers[il].ffn_up,   NULL,
-                        model.layers[il].ffn_gate, NULL,
-                        model.layers[il].ffn_down, NULL,
+                        m->layers[local_il].ffn_up,   NULL,
+                        m->layers[local_il].ffn_gate, NULL,
+                        m->layers[local_il].ffn_down, NULL,
                         NULL,
                         LLM_FFN_SILU, LLM_FFN_PAR, cb, il);
                 cb(cur, "ffn_out", il);
             } else {
                 // MoE branch
                 cur = llm_build_norm(ctx0, ffn_inp, hparams,
-                        model.layers[il].ffn_norm, NULL,
+                        m->layers[local_il].ffn_norm, NULL,
                         LLM_NORM_RMS, cb, il);
                 cb(cur, "ffn_norm", il);
 
                 cur = llm_build_moe_ffn(ctx0, cur,
-                        model.layers[il].ffn_gate_inp,
-                        model.layers[il].ffn_up_exps,
-                        model.layers[il].ffn_gate_exps,
-                        model.layers[il].ffn_down_exps,
+                        m->layers[local_il].ffn_gate_inp,
+                        m->layers[local_il].ffn_up_exps,
+                        m->layers[local_il].ffn_gate_exps,
+                        m->layers[local_il].ffn_down_exps,
                         n_expert, n_expert_used,
                         LLM_FFN_SILU, true,
                         cb, il);
@@ -14995,8 +15008,16 @@ struct llama_model * llama_load_model_from_file(
     return model;
 }
 
+
 void llama_free_model(struct llama_model * model) {
     delete model;
+}
+
+
+void llama_set_model2(
+    struct llama_context* ctx,
+    struct llama_model * model){
+    ctx->model2 = model;
 }
 
 struct llama_context * llama_new_context_with_model(
