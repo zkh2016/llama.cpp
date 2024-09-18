@@ -366,6 +366,10 @@ extern "C" {
                              const char * path_model,
             struct llama_model_params     params);
 
+    LLAMA_API void llama_set_model_skip_layers(
+                           struct llama_model * model,
+            int skip_layers);
+
     LLAMA_API void llama_free_model(struct llama_model * model);
 
     LLAMA_API struct llama_context * llama_new_context_with_model(

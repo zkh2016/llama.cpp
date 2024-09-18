@@ -2165,6 +2165,7 @@ struct llama_model {
     llama_split_mode split_mode;
     int main_gpu;
     int n_gpu_layers;
+    int skip_layers;
 
     // gguf metadata
     std::unordered_map<std::string, std::string> gguf_kv;
@@ -6752,15 +6753,18 @@ struct llm_build_context {
 
         // KQ_mask (mask for 1 head, it will be broadcasted to all heads)
         struct ggml_tensor * KQ_mask = build_inp_KQ_mask();
+        const int skip_layers = model2 == nullptr ? 0 : model2->skip_layers;
+        int skip_idx = 0;
 
         for (int il = 0; il < n_layer; ++il) {
             struct ggml_tensor * inpSA = inpL;
 
             const llama_model *m = &model;
             int local_il = il;
-            if(il >= 16 && model2 != nullptr){//TODO: && is_vit
+            if(il >= n_layer - skip_layers && model2 != nullptr){//TODO: && is_vit
                 m = model2;
-                // local_il = il - 16;
+                local_il = skip_idx;
+                skip_idx += 1;
             }
 
             // norm
@@ -14967,6 +14971,13 @@ void llama_backend_free(void) {
 
 int64_t llama_time_us(void) {
     return ggml_time_us();
+}
+
+void llama_set_model_skip_layers(
+    struct llama_model* model,
+    int skip_layers
+){
+    model->skip_layers = skip_layers;
 }
 
 struct llama_model * llama_load_model_from_file(

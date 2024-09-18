@@ -169,6 +169,7 @@ struct gpt_params {
     std::string mmproj = ""; // path to multimodal projector
     std::string image  = ""; // path to an image file
     std::string skip_model = ""; //the skip model path
+    int skip_layers = 0; //the layers to skip
 };
 
 bool gpt_params_parse_ex(int argc, char ** argv, gpt_params & params);
