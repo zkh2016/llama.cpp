@@ -14849,6 +14849,7 @@ struct llama_model_params llama_model_default_params() {
         /*.vocab_only                  =*/ false,
         /*.use_mmap                    =*/ true,
         /*.use_mlock                   =*/ false,
+        /*.init_time                   =*/ true,
     };
 
 #ifdef GGML_USE_METAL
@@ -14983,8 +14984,10 @@ void llama_set_model_skip_layers(
 struct llama_model * llama_load_model_from_file(
         const char * path_model,
         struct llama_model_params   params) {
-    ggml_time_init();
-
+    if(params.init_time){
+        ggml_time_init();
+    }
+    
     llama_model * model = new llama_model;
 
     unsigned cur_percentage = 0;

@@ -75,12 +75,28 @@ static struct llava_context * llava_init_context(gpt_params * params) {
     } else {
         ctx_params.n_ctx = params->n_ctx;
     }
+    
+    llama_model * model2 = nullptr;
+    if(params->skip_model.size() > 0 && params->skip_layers > 0) {
+        //load last model
+        llama_model_params model_params = llama_model_params_from_gpt_params(*params);
+        model_params.init_time = false;
+        //llama_model * model2 = llama_load_model_from_file(params->model.c_str(), model_params);
+        //llama_model * model2 = llama_load_model_from_file("/Users/zkh/Downloads/last_16/ggml-model-Q4_0.gguf", model_params);
+        model2 = llama_load_model_from_file(params->skip_model.c_str(), model_params);
+        llama_set_model_skip_layers(model2, params->skip_layers);
+        //llama_add_model_load_times(model, model2);
+    }
 
     llama_context * ctx_llama = llama_new_context_with_model(model, ctx_params);
     
     if (ctx_llama == NULL) {
         LOG_TEE("%s: error: failed to create the llama_context\n" , __func__);
         return NULL;
+    }
+
+    if(params->skip_model.size() > 0 && params->skip_layers > 0) {
+        llama_set_model2(ctx_llama, model2);
     }
 
     for (unsigned int i = 0; i < params->lora_adapter.size(); ++i) {
@@ -100,16 +116,6 @@ static struct llava_context * llava_init_context(gpt_params * params) {
     }
 
     auto ctx_llava = (struct llava_context *)malloc(sizeof(llava_context));
-
-    {
-        //load last model
-        llama_model_params model_params = llama_model_params_from_gpt_params(*params);
-        //llama_model * model2 = llama_load_model_from_file(params->model.c_str(), model_params);
-        //llama_model * model2 = llama_load_model_from_file("/Users/zkh/Downloads/last_16/ggml-model-Q4_0.gguf", model_params);
-        llama_model * model2 = llama_load_model_from_file(params->skip_model.c_str(), model_params);
-        llama_set_model_skip_layers(model2, params->skip_layers);
-        llama_set_model2(ctx_llama, model2);
-    }
 
     ctx_llava->ctx_llama = ctx_llama;
     ctx_llava->ctx_clip = ctx_clip;
@@ -341,7 +347,8 @@ int main(int argc, char ** argv) {
         if (params.image.size() > 0) {
             auto image = params.image;
             ctx_llava = minicpmv_init(&params, image, n_past);
-            
+            //release vit memory
+            clip_free(ctx_llava->ctx_clip);
             if (!params.prompt.empty()) {
                 LOG_TEE("<user>%s\n", params.prompt.c_str());
                 LOG_TEE("<assistant>");
