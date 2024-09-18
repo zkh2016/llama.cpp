@@ -848,6 +848,14 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         params.image = argv[i];
         return true;
     }
+    if (arg == "--skip-model") {
+        if (++i >= argc) {
+            invalid_param = true;
+            return true;
+        }
+        params.skip_model = argv[i];
+        return true;
+    }
     if (arg == "-i" || arg == "--interactive") {
         params.interactive = true;
         return true;
@@ -1480,6 +1488,7 @@ void gpt_print_usage(int /*argc*/, char ** argv, const gpt_params & params) {
     printf("  -cb, --cont-batching  enable continuous batching (a.k.a dynamic batching) (default: disabled)\n");
     printf("  --mmproj MMPROJ_FILE  path to a multimodal projector file for LLaVA. see examples/llava/README.md\n");
     printf("  --image IMAGE_FILE    path to an image file. use with multimodal models\n");
+    printf("  --skip-model SKIP_MODEL path to a skip model. see examples/llava/README.md\n");
     if (llama_supports_mlock()) {
         printf("  --mlock               force system to keep model in RAM rather than swapping or compressing\n");
     }

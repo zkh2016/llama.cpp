@@ -168,6 +168,7 @@ struct gpt_params {
     // multimodal models (see examples/llava)
     std::string mmproj = ""; // path to multimodal projector
     std::string image  = ""; // path to an image file
+    std::string skip_model = ""; //the skip model path
 };
 
 bool gpt_params_parse_ex(int argc, char ** argv, gpt_params & params);
