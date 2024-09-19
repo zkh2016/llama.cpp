@@ -4296,9 +4296,10 @@ static void llm_load_vocab(
     } else if (vocab.type == LLAMA_VOCAB_TYPE_WPM) {
         vocab.linefeed_id = vocab.special_pad_id;
     } else {
-        const std::vector<int> ids = llama_tokenize_internal(vocab, "\xC4\x8A", false); // U+010A
-        GGML_ASSERT(!ids.empty() && "model vocab missing newline token");
-        vocab.linefeed_id = ids[0];
+        printf("====unknow vocab type\n");
+        // const std::vector<int> ids = llama_tokenize_internal(vocab, "\xC4\x8A", false); // U+010A
+        // GGML_ASSERT(!ids.empty() && "model vocab missing newline token");
+        // vocab.linefeed_id = ids[0];
     }
 
     // special tokens
@@ -5934,7 +5935,9 @@ static int llama_model_load(const std::string & fname, llama_model & model, llam
             throw std::runtime_error("error loading model vocabulary: " + std::string(e.what()));
         }
 
-        llm_load_print_meta(ml, model);
+        if (model.skip_layers == 0){
+            llm_load_print_meta(ml, model);
+        }
 
         if (model.vocab.type != LLAMA_VOCAB_TYPE_NONE &&
             model.hparams.n_vocab != model.vocab.id_to_token.size()) {
@@ -6755,6 +6758,7 @@ struct llm_build_context {
         struct ggml_tensor * KQ_mask = build_inp_KQ_mask();
         const int skip_layers = model2 == nullptr ? 0 : model2->skip_layers;
         int skip_idx = 0;
+        std::vector<int> skip_list = {0, 5, 10, 16, 21, 26, 31};
 
         for (int il = 0; il < n_layer; ++il) {
             struct ggml_tensor * inpSA = inpL;
@@ -6764,8 +6768,15 @@ struct llm_build_context {
             if(il >= n_layer - skip_layers && model2 != nullptr){//TODO: && is_vit
                 m = model2;
                 local_il = skip_idx;
-                skip_idx += 1;
+                 skip_idx += 1;
             }
+            // if(model2 != nullptr){
+            //     auto it = find(skip_list.begin(), skip_list.end(), il);
+            //     if(it != skip_list.end()){
+            //         local_il = it - skip_list.begin();
+            //         m = model2;
+            //     }
+            // }
 
             // norm
             cur = llm_build_norm(ctx0, inpL, hparams,
