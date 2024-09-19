@@ -4123,7 +4123,8 @@ static llama_token llama_byte_to_token(const llama_vocab & vocab, uint8_t ch);
 
 static void llm_load_vocab(
         llama_model_loader & ml,
-        llama_model & model) {
+        llama_model & model,
+        bool has_vocab) {
     auto & vocab = model.vocab;
 
     struct gguf_context * ctx = ml.meta;
@@ -4296,10 +4297,11 @@ static void llm_load_vocab(
     } else if (vocab.type == LLAMA_VOCAB_TYPE_WPM) {
         vocab.linefeed_id = vocab.special_pad_id;
     } else {
-        printf("====unknow vocab type\n");
-        // const std::vector<int> ids = llama_tokenize_internal(vocab, "\xC4\x8A", false); // U+010A
-        // GGML_ASSERT(!ids.empty() && "model vocab missing newline token");
-        // vocab.linefeed_id = ids[0];
+        if(has_vocab){
+            const std::vector<int> ids = llama_tokenize_internal(vocab, "\xC4\x8A", false); // U+010A
+            GGML_ASSERT(!ids.empty() && "model vocab missing newline token");
+            vocab.linefeed_id = ids[0];
+        }
     }
 
     // special tokens
@@ -5930,12 +5932,12 @@ static int llama_model_load(const std::string & fname, llama_model & model, llam
             throw std::runtime_error("error loading model hyperparameters: " + std::string(e.what()));
         }
         try {
-            llm_load_vocab(ml, model);
+            llm_load_vocab(ml, model, params.has_vocab);
         } catch(const std::exception & e) {
             throw std::runtime_error("error loading model vocabulary: " + std::string(e.what()));
         }
 
-        if (model.skip_layers == 0){
+        if (params.has_vocab){
             llm_load_print_meta(ml, model);
         }
 
@@ -14861,6 +14863,7 @@ struct llama_model_params llama_model_default_params() {
         /*.use_mmap                    =*/ true,
         /*.use_mlock                   =*/ false,
         /*.init_time                   =*/ true,
+        /*.has_vocab                   =*/ true,
     };
 
 #ifdef GGML_USE_METAL

@@ -236,6 +236,7 @@ extern "C" {
         bool use_mmap;   // use mmap if possible
         bool use_mlock;  // force system to keep model in RAM
         bool init_time;
+        bool has_vocab;
     };
 
     struct llama_context_params {

@@ -81,6 +81,7 @@ static struct llava_context * llava_init_context(gpt_params * params) {
         //load last model
         llama_model_params model_params = llama_model_params_from_gpt_params(*params);
         model_params.init_time = false;
+        model_params.has_vocab = false;
         //llama_model * model2 = llama_load_model_from_file(params->model.c_str(), model_params);
         //llama_model * model2 = llama_load_model_from_file("/Users/zkh/Downloads/last_16/ggml-model-Q4_0.gguf", model_params);
         model2 = llama_load_model_from_file(params->skip_model.c_str(), model_params);
