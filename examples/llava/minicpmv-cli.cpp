@@ -9,6 +9,8 @@
 #include <cstdlib>
 #include <vector>
 
+#include <fstream>
+#include <iostream>
 // extern "C" {
 //     #include <libavcodec/avcodec.h>
 //     #include <libavformat/avformat.h>
@@ -174,6 +176,29 @@ static void process_eval_image_embed(struct llava_context * ctx_llava, const str
     llava_image_embed_free(slice_embed);
 }
 
+static void process_eval_image_embed_l(struct llava_context * ctx_llava, const struct llava_image_embed * embeds, int n_batch, int * n_past, int idx, int sp , unsigned char * buffer) {
+    int n_patches = clip_n_patches(ctx_llava->ctx_clip);
+    int token_len = clip_n_mmproj_embd(ctx_llava->ctx_clip)*sizeof(float);
+    float * image_embed = (float *)malloc(clip_embd_nbytes(ctx_llava->ctx_clip)+2*token_len);
+
+    if (sp == 0) {
+        std::memcpy(image_embed, buffer, token_len);
+        std::memcpy(image_embed + n_patches + 1, buffer+token_len, token_len);
+    }
+    else if (sp == 1) {
+        std::memcpy(image_embed, buffer+token_len*2, token_len);
+        std::memcpy(image_embed+ n_patches + 1, buffer+token_len*3, token_len);
+    }
+    
+    std::memcpy(image_embed+token_len, embeds->embed + idx * clip_n_patches(ctx_llava->ctx_clip) * clip_n_mmproj_embd(ctx_llava->ctx_clip), clip_embd_nbytes(ctx_llava->ctx_clip));
+
+    auto slice_embed = (llava_image_embed*)malloc(sizeof(llava_image_embed));
+    slice_embed->embed = image_embed;
+    slice_embed->n_image_pos = clip_n_patches(ctx_llava->ctx_clip) + 2;
+    llava_eval_image_embed(ctx_llava->ctx_llama, slice_embed, n_batch, n_past);
+    llava_image_embed_free(slice_embed);
+}
+
 static int process_image(struct llava_context * ctx_llava, struct llava_image_embed * embeds, gpt_params * params, int &n_past) {
     std::string system_prompt;
     bool res = false;
@@ -198,6 +223,60 @@ static int process_image(struct llava_context * ctx_llava, struct llava_image_em
     }
     res = eval_string(ctx_llava->ctx_llama, std::string("\n").c_str(), params->n_batch, &n_past, false);
     LOG_TEE("%s: image token past: %d\n", __func__, n_past);
+    if(!res) return 0;
+    return n_past;
+}
+
+static int process_image_l(struct llava_context * ctx_llava, struct llava_image_embed * embeds, gpt_params * params, int &n_past) {
+    std::string system_prompt;
+    bool res = false;
+    int idx = 0;
+    int num_image_embeds = embeds->n_image_pos / clip_n_patches(ctx_llava->ctx_clip);    
+    LOG_TEE("%s: image token past: %d\n", __func__, n_past);
+
+    std::string fname = "./examples/llava/sp.raw";
+    auto file = fopen(fname.c_str(), "rb");
+    if (file == NULL) {
+        LOG_TEE("%s: can't read file %s\n", __func__, fname.c_str());
+        return 0;
+    }
+    fseek(file, 0, SEEK_END);
+    auto fileSize = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    auto buffer = (unsigned char *)malloc(fileSize);
+    if (buffer == NULL) {
+        LOG_TEE("%s: failed to alloc %ld bytes for file %s\n", __func__, fileSize, fname.c_str());
+        perror("Memory allocation error");
+        fclose(file);
+        free(buffer);
+        return 0;
+    }
+    errno = 0;
+    size_t ret = fread(buffer, 1, fileSize, file);
+    if (ferror(file)) {
+        die_fmt("read error: %s", strerror(errno));
+    }
+    if (ret != (size_t) fileSize) {
+        die("unexpectedly reached end of file");
+    }
+    fclose(file);
+
+    process_eval_image_embed_l(ctx_llava, embeds, params->n_batch, &n_past, idx++, 0, buffer);
+    if (num_image_embeds > 1) {
+        size_t num_image_embeds_col = clip_uhd_num_image_embeds_col(ctx_llava->ctx_clip);
+        for (size_t i = 0; i < (num_image_embeds-1)/num_image_embeds_col; ++i) {
+            for (size_t j = 0; j < num_image_embeds_col; ++j) {
+                process_eval_image_embed_l(ctx_llava, embeds, params->n_batch, &n_past, idx++, 1, buffer);
+                if (j == num_image_embeds_col - 1) {
+                    eval_string(ctx_llava->ctx_llama, std::string("\n").c_str(), params->n_batch, &n_past, false);
+                }
+            }
+        }
+    }
+    res = eval_string(ctx_llava->ctx_llama, std::string("\n").c_str(), params->n_batch, &n_past, false);
+    LOG_TEE("%s: image token past: %d\n", __func__, n_past);
+    free(buffer);
     if(!res) return 0;
     return n_past;
 }
@@ -278,7 +357,7 @@ static struct llava_context * minicpmv_init(gpt_params * params, const std::stri
 
     const int64_t t_process_image_start_us = ggml_time_us();
     process_prompt(0, ctx_llava, params, n_past);
-    process_image(ctx_llava, embeds, params, n_past);
+    process_image_l(ctx_llava, embeds, params, n_past);
     const int64_t t_process_image_end_us = ggml_time_us();
     float t_process_image_ms = (t_process_image_end_us - t_process_image_start_us) / 1000.0;
     LOG_TEE("\n%s: llama process image in %8.2f ms.\n", __func__, t_process_image_ms);
