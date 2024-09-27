@@ -6760,7 +6760,7 @@ struct llm_build_context {
         struct ggml_tensor * KQ_mask = build_inp_KQ_mask();
         const int skip_layers = model2 == nullptr ? 0 : model2->skip_layers;
         int skip_idx = 0;
-        std::vector<int> skip_list = {0, 5, 10, 16, 21, 26, 31};
+        std::vector<int> skip_list = {24, 25, 26, 27, 28, 29, 30, 31};
 
         for (int il = 0; il < n_layer; ++il) {
             struct ggml_tensor * inpSA = inpL;

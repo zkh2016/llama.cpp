@@ -503,8 +503,6 @@ struct clip_vision_model {
     struct ggml_tensor * mm_model_peg_0_b;
 
     // MINICPMV projection
-    struct ggml_tensor * mm_model_pos_embed;
-    struct ggml_tensor * mm_model_pos_embed_k;
     struct ggml_tensor * mm_model_query;
     struct ggml_tensor * mm_model_proj;
     struct ggml_tensor * mm_model_kv_proj;
@@ -960,9 +958,6 @@ static ggml_cgraph * clip_image_build_graph(clip_ctx * ctx, const clip_image_f32
             }
             struct ggml_tensor * k;
             { // position
-                if (ctx->minicpmv_version == 1) {
-                    q = ggml_add(ctx0, q, model.mm_model_pos_embed);
-                }
                 k = ggml_add(ctx0, v, pos_embed);      
             }
 
@@ -1285,7 +1280,11 @@ struct clip_ctx * clip_model_load(const char * fname, const int verbosity = 1) {
         hparams.patch_size     = get_u32(ctx, KEY_PATCH_SIZE);
         hparams.projection_dim = get_u32(ctx, format(KEY_PROJ_DIM, "vision"));
         hparams.eps            = get_f32(ctx, format(KEY_LAYER_NORM_EPS, "vision"));
-
+        
+        if (new_clip->has_minicpmv_projector) {
+            hparams.n_layer = 27;
+        }
+        
         try {
             int idx = get_key_idx(ctx, KEY_IMAGE_GRID_PINPOINTS);
             int n = gguf_get_arr_n(ctx, idx);
@@ -1447,10 +1446,6 @@ struct clip_ctx * clip_model_load(const char * fname, const int verbosity = 1) {
             vision_model.mm_model_peg_0_b = get_tensor(new_clip->ctx_data, format(TN_MVLM_PROJ_PEG, 0, "bias"));
         }
         else if (new_clip->proj_type == PROJECTOR_TYPE_RESAMPLER) {
-            if (new_clip->minicpmv_version == 1) {
-                vision_model.mm_model_pos_embed = get_tensor(new_clip->ctx_data, TN_MINICPMV_POS_EMBD);
-            }
-            vision_model.mm_model_pos_embed_k = get_tensor(new_clip->ctx_data, TN_MINICPMV_POS_EMBD_K);
             vision_model.mm_model_query = get_tensor(new_clip->ctx_data, TN_MINICPMV_QUERY);
             vision_model.mm_model_proj = get_tensor(new_clip->ctx_data, TN_MINICPMV_PROJ);
             vision_model.mm_model_kv_proj = get_tensor(new_clip->ctx_data, TN_MINICPMV_KV_PROJ);
@@ -1632,7 +1627,7 @@ static void normalize_image_u8_to_f32(const clip_image_u8* src, clip_image_f32* 
     }
 }
 
-inline float clip(float x, float lower, float upper) {
+inline int clip(int x, int lower, int upper) {
     return std::max(lower, std::min(x, upper));
 }
 
@@ -1834,10 +1829,6 @@ static std::pair<int, int> uhd_get_refine_size(std::pair<int, int> original_size
   //  std::pair<int, int> refine_size = std::make_tuple(best_grid_width * grid_x, best_grid_height * grid_y); (old line)
     std::pair<int, int> refine_size = std::make_pair(best_grid_width * grid_x, best_grid_height * grid_y); // (new line)
     return refine_size;
-}
-
-inline int clip(int x, int lower, int upper) {
-    return std::max(lower, std::min(x, upper));
 }
 
 static std::pair<int, int> uhd_best_grid(const int max_slice_nums, const int multiple, const float log_ratio) {
