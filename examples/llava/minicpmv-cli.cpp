@@ -183,11 +183,11 @@ static void process_eval_image_embed_l(struct llava_context * ctx_llava, const s
 
     if (sp == 0) {
         std::memcpy(image_embed, buffer, token_len);
-        std::memcpy(image_embed + n_patches + 1, buffer+token_len, token_len);
+        std::memcpy(image_embed + (n_patches + 1) * token_len, buffer+token_len, token_len);
     }
     else if (sp == 1) {
         std::memcpy(image_embed, buffer+token_len*2, token_len);
-        std::memcpy(image_embed+ n_patches + 1, buffer+token_len*3, token_len);
+        std::memcpy(image_embed + (n_patches + 1) * token_len, buffer+token_len*3, token_len);
     }
     
     std::memcpy(image_embed+token_len, embeds->embed + idx * clip_n_patches(ctx_llava->ctx_clip) * clip_n_mmproj_embd(ctx_llava->ctx_clip), clip_embd_nbytes(ctx_llava->ctx_clip));
