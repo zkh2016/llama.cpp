@@ -211,6 +211,25 @@ static struct llava_context * llava_init_context(gpt_params * params) {
         return NULL;
     }
 
+    // // load and optionally apply lora adapters
+    // for (auto & la : params->lora_adapters) {
+    //     llama_lora_adapter_container loaded_la;
+    //     loaded_la.path = la.path;
+    //     loaded_la.scale = la.scale;
+    //     loaded_la.adapter = llama_lora_adapter_init(model, la.path.c_str());
+    //     if (loaded_la.adapter == nullptr) {
+    //         fprintf(stderr, "%s: error: failed to apply lora adapter '%s'\n", __func__, la.path.c_str());
+    //         // llama_free(lctx);
+    //         // llama_free_model(model);
+    //         // return iparams;
+    //         return NULL;
+    //     }
+    //     iparams.lora_adapters.push_back(loaded_la); // copy to list of loaded adapters
+    // }
+    // if (!params->lora_init_without_apply) {
+    //     llama_lora_adapters_apply(ctx_llama, iparams.lora_adapters);
+    // }
+
     auto ctx_llava = (struct llava_context *)malloc(sizeof(llava_context));
 
     ctx_llava->ctx_llama = ctx_llama;

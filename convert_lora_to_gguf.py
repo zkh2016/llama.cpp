@@ -225,6 +225,9 @@ def get_base_tensor_name(lora_tensor_name: str) -> str:
     base_name = lora_tensor_name.replace("base_model.model.", "")
     base_name = base_name.replace(".lora_A.weight", ".weight")
     base_name = base_name.replace(".lora_B.weight", ".weight")
+    # base_name = lora_tensor_name.replace("base_model.model.llm.", "")
+    # base_name = base_name.replace(".lora_A.default.weight", ".weight")
+    # base_name = base_name.replace(".lora_B.default.weight", ".weight")
     return base_name
 
 
@@ -340,6 +343,8 @@ if __name__ == '__main__':
                     base_name = get_base_tensor_name(name)
                     is_lora_a = ".lora_A.weight" in name
                     is_lora_b = ".lora_B.weight" in name
+                    # is_lora_a = ".lora_A.default.weight" in name
+                    # is_lora_b = ".lora_B.default.weight" in name
                     if not is_lora_a and not is_lora_b:
                         if ".base_layer.weight" in name:
                             continue
