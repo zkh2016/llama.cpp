@@ -35,6 +35,9 @@
 #include <sstream>
 #include <cinttypes>
 #include <limits>
+#include <opencv2/opencv.hpp>
+#include "PillowResize.hpp"
+
 
 //#define CLIP_DEBUG_FUNCTIONS
 
@@ -1639,58 +1642,110 @@ static bool bicubic_resize(const clip_image_u8 &img, clip_image_u8 &dst, int tar
     dst.ny = target_height;
     dst.buf.resize(3 * target_width * target_height);
 
-    float Cc;
-    float C[5];
-    float d0, d2, d3, a0, a1, a2, a3;
-    int i, j, k, jj;
-    int x, y;
-    float dx, dy;
-    float tx, ty;
+    if(0){
+        float Cc;
+        float C[5];
+        float d0, d2, d3, a0, a1, a2, a3;
+        int i, j, k, jj;
+        int x, y;
+        float dx, dy;
+        float tx, ty;
 
-    tx = (float)nx / (float)target_width;
-    ty = (float)ny / (float)target_height;
+        tx = (float)nx / (float)target_width;
+        ty = (float)ny / (float)target_height;
 
-    // Bicubic interpolation; adapted from ViT.cpp, inspired from :
-    //    -> https://github.com/yglukhov/bicubic-interpolation-image-processing/blob/master/libimage.c#L36
-    //    -> https://en.wikipedia.org/wiki/Bicubic_interpolation
+        // Bicubic interpolation; adapted from ViT.cpp, inspired from :
+        //    -> https://github.com/yglukhov/bicubic-interpolation-image-processing/blob/master/libimage.c#L36
+        //    -> https://en.wikipedia.org/wiki/Bicubic_interpolation
 
-    for (i = 0; i < target_height; i++) {
-        for (j = 0; j < target_width; j++) {
-            x = (int)(tx * j);
-            y = (int)(ty * i);
+        for (i = 0; i < target_height; i++) {
+            for (j = 0; j < target_width; j++) {
+                x = (int)(tx * j);
+                y = (int)(ty * i);
 
-            dx = tx * j - x;
-            dy = ty * i - y;
+                dx = tx * j - x;
+                dy = ty * i - y;
 
-            for (k = 0; k < 3; k++) {
-                for (jj = 0; jj <= 3; jj++) {
-                    d0 = img.buf[(clip(y - 1 + jj, 0, ny - 1) * nx + clip(x - 1, 0, nx - 1)) * 3 + k] - img.buf[(clip(y - 1 + jj, 0, ny - 1) * nx + clip(x, 0, nx - 1)) * 3 + k];
-                    d2 = img.buf[(clip(y - 1 + jj, 0, ny - 1) * nx + clip(x + 1, 0, nx - 1)) * 3 + k] - img.buf[(clip(y - 1 + jj, 0, ny - 1) * nx + clip(x, 0, nx - 1)) * 3 + k];
-                    d3 = img.buf[(clip(y - 1 + jj, 0, ny - 1) * nx + clip(x + 2, 0, nx - 1)) * 3 + k] - img.buf[(clip(y - 1 + jj, 0, ny - 1) * nx + clip(x, 0, nx - 1)) * 3 + k];
-                    a0 = img.buf[(clip(y - 1 + jj, 0, ny - 1) * nx + clip(x, 0, nx - 1)) * 3 + k];
+                for (k = 0; k < 3; k++) {
+                    for (jj = 0; jj <= 3; jj++) {
+                        d0 = img.buf[(clip(y - 1 + jj, 0, ny - 1) * nx + clip(x - 1, 0, nx - 1)) * 3 + k] - img.buf[(clip(y - 1 + jj, 0, ny - 1) * nx + clip(x, 0, nx - 1)) * 3 + k];
+                        d2 = img.buf[(clip(y - 1 + jj, 0, ny - 1) * nx + clip(x + 1, 0, nx - 1)) * 3 + k] - img.buf[(clip(y - 1 + jj, 0, ny - 1) * nx + clip(x, 0, nx - 1)) * 3 + k];
+                        d3 = img.buf[(clip(y - 1 + jj, 0, ny - 1) * nx + clip(x + 2, 0, nx - 1)) * 3 + k] - img.buf[(clip(y - 1 + jj, 0, ny - 1) * nx + clip(x, 0, nx - 1)) * 3 + k];
+                        a0 = img.buf[(clip(y - 1 + jj, 0, ny - 1) * nx + clip(x, 0, nx - 1)) * 3 + k];
 
-                    a1 = -1.0 / 3 * d0 + d2 - 1.0 / 6 * d3;
-                    a2 =  1.0 / 2 * d0 +      1.0 / 2 * d2;
-                    a3 = -1.0 / 6 * d0 -      1.0 / 2 * d2 + 1.0 / 6 * d3;
+                        a1 = -1.0 / 3 * d0 + d2 - 1.0 / 6 * d3;
+                        a2 =  1.0 / 2 * d0 +      1.0 / 2 * d2;
+                        a3 = -1.0 / 6 * d0 -      1.0 / 2 * d2 + 1.0 / 6 * d3;
 
-                    C[jj] = a0 + a1 * dx + a2 * dx * dx + a3 * dx * dx * dx;
+                        C[jj] = a0 + a1 * dx + a2 * dx * dx + a3 * dx * dx * dx;
 
-                    d0 = C[0] - C[1];
-                    d2 = C[2] - C[1];
-                    d3 = C[3] - C[1];
-                    a0 = C[1];
-                    a1 = -1.0 / 3 * d0 + d2 - 1.0 / 6 * d3;
-                    a2 =  1.0 / 2 * d0 +      1.0 / 2 * d2;
-                    a3 = -1.0 / 6 * d0 -      1.0 / 2 * d2 + 1.0 / 6 * d3;
-                    Cc = a0 + a1 * dy + a2 * dy * dy + a3 * dy * dy * dy;
+                        d0 = C[0] - C[1];
+                        d2 = C[2] - C[1];
+                        d3 = C[3] - C[1];
+                        a0 = C[1];
+                        a1 = -1.0 / 3 * d0 + d2 - 1.0 / 6 * d3;
+                        a2 =  1.0 / 2 * d0 +      1.0 / 2 * d2;
+                        a3 = -1.0 / 6 * d0 -      1.0 / 2 * d2 + 1.0 / 6 * d3;
+                        Cc = a0 + a1 * dy + a2 * dy * dy + a3 * dy * dy * dy;
 
-                    const uint8_t Cc2 = std::min(std::max(std::round(Cc), 0.0f), 255.0f);
-                    dst.buf[(i * target_width + j) * 3 + k] = float(Cc2);
+                        const uint8_t Cc2 = std::min(std::max(std::round(Cc), 0.0f), 255.0f);
+                        dst.buf[(i * target_width + j) * 3 + k] = float(Cc2);
+                    }
                 }
             }
         }
-    }
+    }else{//use pillow resize
+        cv::Mat src_mat = cv::Mat::zeros(img.ny, img.nx, CV_8UC3);
+        FILE *fp_src = fopen("src.txt", "w");
+        FILE *fp_resize = fopen("resize.txt", "w");
+        if(false){          
+            
+            printf("src size = %d %d\n", img.ny, img.nx);
 
+            for(int i = 0; i < src_mat.rows; i++){
+                uint8_t *ptr = src_mat.ptr<uint8_t>(i);
+                memcpy(ptr, img.buf.data() + i * src_mat.cols * 3, src_mat.cols * 3);
+                for(int j = 0; j < src_mat.cols; j++){
+                    fprintf(fp_src, "%d, %d, %d\n", (int)ptr[j * 3 + 0], (int)ptr[j * 3 + 1], (int)ptr[j * 3 + 2]);
+                    if(i < 10 && j < 10){
+                        printf("%d %d %d, ", (int)ptr[j * 3 + 0], (int)ptr[j * 3 + 1], (int)ptr[j * 3 + 2]);
+                    }
+                }
+                if(i < 10){
+                    printf("\n");
+                }
+            }
+            printf("\n");
+        }else{
+            src_mat = cv::imread("D:\\project\\minicpmv2.7\\Archive\\5.png", cv::IMREAD_COLOR);
+            cv::cvtColor(src_mat, src_mat, cv::COLOR_BGR2RGB);
+            for(int y = 0; y < src_mat.rows; y++){
+                for(int x = 0; x < src_mat.cols; x++){
+                    cv::Vec3b& pixel = src_mat.at<cv::Vec3b>(y, x);
+                    if(y < 10 && x < 10)
+                        std::cout << (int)pixel[0] << " " << (int)pixel[1] << " " << (int)pixel[2] << ", ";
+            
+                    fprintf(fp_src, "%d, %d, %d\n", (int)pixel[0], (int)pixel[1], (int)pixel[2]);
+                }
+                if(y < 10)
+                    std::cout << std::endl;
+            }
+        }
+        
+        fclose(fp_src);
+
+        cv::Mat dst_mat = PillowResize::resize(src_mat, cv::Size(target_width, target_height), PillowResize::InterpolationMethods::INTERPOLATION_BICUBIC);
+        
+        for(int i = 0; i < dst_mat.rows; i++){
+            uint8_t *ptr = dst_mat.ptr<uint8_t>(i);
+            memcpy(dst.buf.data() + i * dst_mat.cols * 3, ptr, dst_mat.cols * 3);
+            for(int j = 0; j < dst_mat.cols; j++){
+                fprintf(fp_resize, "%d, %d, %d\n", (int)ptr[j * 3 + 0], (int)ptr[j * 3 + 1], (int)ptr[j * 3 + 2]);
+            }
+        }
+        fclose(fp_resize);
+    }
+    
     return true;
 }
 
@@ -1889,7 +1944,10 @@ static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(const clip_imag
     else if (multiple > 1) {
         auto best_size = uhd_find_best_resize(original_size, scale_resolution, patch_size);
         clip_image_u8 * source_image = clip_image_u8_init();
+        printf("====img shape : %d %d\n", img->ny, img->nx);
         bicubic_resize(*img, *source_image, best_size.first, best_size.second);
+        printf("====resize img shape : %d %d, %d %d\n", source_image->ny, source_image->nx, best_size.first, best_size.second);
+        //exit(0);
         // source_image = image.copy().resize(best_resize, Image.Resampling.BICUBIC)
         LOG_TEE("%s: image_size: %d %d; source_image size: %d %d\n", __func__, img->nx, img->ny, best_size.first, best_size.second);
         images[images.size()-1].push_back(source_image);

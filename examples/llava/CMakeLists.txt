@@ -1,15 +1,22 @@
+set(OpenCV_DIR "D:\\project\\OpenCV\\opencv\\build")
+find_package(OpenCV REQUIRED)
+
 add_library(llava OBJECT
             llava.cpp
             llava.h
             clip.cpp
             clip.h
+            PillowResize.cpp
+            PillowResize.hpp
             )
 
 target_link_libraries(llava PRIVATE ggml llama ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(llava PUBLIC ${OpenCV_LIBS})
 
 target_include_directories(llava PUBLIC .)
 target_include_directories(llava PUBLIC ../..)
 target_include_directories(llava PUBLIC ../../common)
+target_include_directories(llava PUBLIC ${OpenCV_INCLUDE_DIRS})
 
 target_compile_features(llava PRIVATE cxx_std_11)
 
