@@ -658,6 +658,9 @@ static ggml_cgraph * clip_image_build_graph(clip_ctx * ctx, const clip_image_f32
         else if (ctx->minicpmv_version == 4) {
             pos_embed = ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, 4096, pos_w * pos_h, 1);
         }
+        else if (ctx->minicpmv_version == 5) {
+            pos_embed = ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, 1536, pos_w * pos_h, 1);
+        }
         ggml_set_name(pos_embed, "pos_embed");
         ggml_set_input(pos_embed);
     }
@@ -990,6 +993,11 @@ static ggml_cgraph * clip_image_build_graph(clip_ctx * ctx, const clip_image_f32
                     hidden_size = 4096;
                     n_head = hidden_size/d_head;
                     num_query = 96;
+                }
+                else if (ctx->minicpmv_version == 5) {
+                    hidden_size = 1536;
+                    n_head = hidden_size/d_head;
+                    num_query = 64;
                 }
 
                 struct ggml_tensor * Q = ggml_add(ctx0, ggml_mul_mat(ctx0, model.mm_model_attn_q_w, q), model.mm_model_attn_q_b);
@@ -1632,7 +1640,7 @@ static void normalize_image_u8_to_f32(const clip_image_u8* src, clip_image_f32* 
     }
 }
 
-inline float clip(float x, float lower, float upper) {
+inline int clip(int x, int lower, int upper) {
     return std::max(lower, std::min(x, upper));
 }
 
@@ -1834,10 +1842,6 @@ static std::pair<int, int> uhd_get_refine_size(std::pair<int, int> original_size
   //  std::pair<int, int> refine_size = std::make_tuple(best_grid_width * grid_x, best_grid_height * grid_y); (old line)
     std::pair<int, int> refine_size = std::make_pair(best_grid_width * grid_x, best_grid_height * grid_y); // (new line)
     return refine_size;
-}
-
-inline int clip(int x, int lower, int upper) {
-    return std::max(lower, std::min(x, upper));
 }
 
 static std::pair<int, int> uhd_best_grid(const int max_slice_nums, const int multiple, const float log_ratio) {
@@ -2230,6 +2234,9 @@ int clip_n_patches(const struct clip_ctx * ctx) {
         else if (ctx->minicpmv_version == 4) {
             n_patches = 96;
         }
+        else if (ctx->minicpmv_version == 5) {
+            n_patches = 64;
+        }
     }
 
     return n_patches;
@@ -2449,6 +2456,9 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
             }
             else if (ctx->minicpmv_version == 4) {
                 embed_dim = 4096;
+            }
+            else if (ctx->minicpmv_version == 5) {
+                embed_dim = 1536;
             }
             auto pos_embed_t = get_2d_sincos_pos_embed(embed_dim, std::make_pair(pos_w, pos_h));
 
@@ -2676,6 +2686,9 @@ int clip_n_mmproj_embd(const struct clip_ctx * ctx) {
         }
         else if (ctx->minicpmv_version == 4) {
             return 4096;
+        }
+        else if (ctx->minicpmv_version == 5) {
+            return 1536;
         }
     }
 

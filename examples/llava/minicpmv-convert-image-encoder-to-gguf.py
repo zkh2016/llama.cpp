@@ -547,12 +547,19 @@ minicpmv_version = args.minicpmv_version
 emb_dim = 4096
 if minicpmv_version == 1:
     emb_dim = 2304
+    block_count = 26
 elif minicpmv_version == 2:
     emb_dim = 4096
+    block_count = 27
 elif minicpmv_version == 3:
     emb_dim = 3584
+    block_count = 27
 elif minicpmv_version == 4:
     emb_dim = 4096
+    block_count = 27
+elif minicpmv_version == 5:
+    emb_dim = 1536
+    block_count = 27
     
 default_vision_config = {
         "hidden_size": 1152,
@@ -629,7 +636,6 @@ if has_vision_encoder:
     fout.add_uint32("clip.vision.projection_dim", 0)
     fout.add_uint32(add_key_str(KEY_ATTENTION_HEAD_COUNT, VISION), 16)
     fout.add_float32(add_key_str(KEY_ATTENTION_LAYERNORM_EPS, VISION), 1e-6)
-    block_count = 26
     fout.add_uint32(add_key_str(KEY_BLOCK_COUNT, VISION), block_count)
 
     if processor is not None:
