@@ -256,7 +256,18 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
             load_image_size->width = img_res_v.data[i].nx;
             load_image_size->height = img_res_v.data[i].ny;
             clip_add_load_image_size(ctx_clip, load_image_size);
-            bool encoded = clip_image_encode(ctx_clip, n_threads, reshape_by_patch(&img_res_v.data[i], patch_size), image_embd_v[i]);     
+            clip_image_f32* ptr = reshape_by_patch(&img_res_v.data[i], patch_size);
+            // printf("slice_%d, (%d, %d):\n", i, ptr->ny, ptr->nx);
+            // for(int y = 0; y < 10; y++){
+            //     for(int x = 0; x < 10; x++){
+            //         float* buf = &ptr->buf[y * ptr->nx + 3 * x];
+            //         printf("%.4f %.4f %.4f, ", buf[0], buf[1], buf[2]);
+            //     }
+            //     printf("\n");
+            // }
+            // printf("\n");
+
+            bool encoded = clip_image_encode(ctx_clip, n_threads, ptr, image_embd_v[i]);     
             if (!encoded) {
                 LOG_TEE("Unable to encode image - spatial_unpad - subimage %d of %d\n", (int) i+1, (int) img_res_v.size);
                 return false;
@@ -268,10 +279,16 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
         LOG_TEE("%s: all %d segments encoded in %8.2f ms\n", __func__, (int)img_res_v.size, (t_img_enc_batch_us - t_img_enc_start_us) / 1000.0);
 
         int n_img_pos_out = 0;
+        FILE* fp = fopen("vit_out.txt", "w");
+        //printf("clip_n_patches(ctx) = %d, clip_n_mmproj_embd(ctx)= %d\n", clip_n_patches(ctx_clip),  clip_n_mmproj_embd(ctx_clip));
         for (size_t i = 0; i < image_embd_v.size(); i++) {
+            // for(int j = 0; j < clip_n_patches(ctx_clip) * clip_n_mmproj_embd(ctx_clip); j++){
+            //     fprintf(fp, "%.8f\n", image_embd_v[i][j]);
+            // }
             std::memcpy(image_embd + n_img_pos_out * clip_n_mmproj_embd(ctx_clip), image_embd_v[i], clip_embd_nbytes(ctx_clip));
             n_img_pos_out += clip_n_patches(ctx_clip);
         }
+        fclose(fp);
         *n_img_pos = n_img_pos_out;
         for (size_t i = 0; i < image_embd_v.size(); i++) {
             free(image_embd_v[i]);
@@ -421,6 +438,7 @@ struct llava_image_embed * llava_image_embed_make_with_bytes(struct clip_ctx * c
         LOG_TEE("%s: coulnd't embed the image\n", __func__);
         return NULL;
     }
+    printf("with_bytes: %x\n", image_embed);
 
     clip_image_u8_free(img);
     auto result = (llava_image_embed*)malloc(sizeof(llava_image_embed));

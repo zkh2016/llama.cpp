@@ -178,18 +178,21 @@ static void process_eval_image_embed_l(struct llava_context * ctx_llava, const s
     int n_patches = clip_n_patches(ctx_llava->ctx_clip);
     int token_len = clip_n_mmproj_embd(ctx_llava->ctx_clip)*sizeof(float);
     float * image_embed = (float *)malloc(clip_embd_nbytes(ctx_llava->ctx_clip)+2*token_len);
-
+    printf("sp = %d, n_patches=%d, token_len=%d\n", sp, n_patches, token_len);
     if (sp == 0) {
         std::memcpy(image_embed, buffer, token_len);
-        std::memcpy(image_embed + (n_patches + 1) * token_len, buffer+token_len, token_len);
+        std::memcpy((char*)image_embed + (n_patches + 1) * token_len, buffer+token_len, token_len);
     }
     else if (sp == 1) {
         std::memcpy(image_embed, buffer+token_len*2, token_len);
-        std::memcpy(image_embed + (n_patches + 1) * token_len, buffer+token_len*3, token_len);
+        std::memcpy((char*)image_embed + (n_patches + 1) * token_len, buffer+token_len*3, token_len);
     }
     
-    std::memcpy(image_embed+token_len, embeds->embed + idx * clip_n_patches(ctx_llava->ctx_clip) * clip_n_mmproj_embd(ctx_llava->ctx_clip), clip_embd_nbytes(ctx_llava->ctx_clip));
+    printf("before memcpy, idx=%d, nbytes=%d, token_len=%d, \n", idx, clip_embd_nbytes(ctx_llava->ctx_clip), token_len);
+    printf("addr: %x\n", embeds->embed);
+    std::memcpy((char*)image_embed+token_len, embeds->embed + idx * clip_n_patches(ctx_llava->ctx_clip) * clip_n_mmproj_embd(ctx_llava->ctx_clip), clip_embd_nbytes(ctx_llava->ctx_clip));
 
+    printf("after memcpy\n");
     auto slice_embed = (llava_image_embed*)malloc(sizeof(llava_image_embed));
     slice_embed->embed = image_embed;
     slice_embed->n_image_pos = clip_n_patches(ctx_llava->ctx_clip) + 2;
@@ -232,7 +235,7 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
     int num_image_embeds = embeds->n_image_pos / clip_n_patches(ctx_llava->ctx_clip);    
     LOG_TEE("%s: image token past: %d\n", __func__, n_past);
 
-    std::string fname = "./examples/llava/sp.raw";
+    std::string fname = "D:\\project\\MinicpmModel2720\\sp.raw";
     auto file = fopen(fname.c_str(), "rb");
     if (file == NULL) {
         LOG_TEE("%s: can't read file %s\n", __func__, fname.c_str());
@@ -260,7 +263,9 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
     }
     fclose(file);
 
+    printf("after load sp.raw\n");
     process_eval_image_embed_l(ctx_llava, embeds, params->n_batch, &n_past, idx++, 0, buffer);
+    printf("after process_eval_image_embed_l\n");
     if (num_image_embeds > 1) {
         size_t num_image_embeds_col = clip_uhd_num_image_embeds_col(ctx_llava->ctx_clip);
         for (size_t i = 0; i < (num_image_embeds-1)/num_image_embeds_col; ++i) {
@@ -318,10 +323,13 @@ static bool process_prompt(int type, struct llava_context * ctx_llava, gpt_param
     return 0;
 }
 
+static std::vector<int> g_ids;
+
 static const char * sample(struct llama_sampling_context * ctx_sampling,
                            struct llama_context * ctx_llama,
                            int * n_past) {
     const llama_token id = llama_sampling_sample(ctx_sampling, ctx_llama, NULL);
+    g_ids.push_back(id);
     llama_sampling_accept(ctx_sampling, ctx_llama, id, true);
     static std::string ret;
     if (llama_token_is_eog(llama_get_model(ctx_llama), id)) {
@@ -356,11 +364,13 @@ static struct llava_context * minicpmv_init(gpt_params * params, const std::stri
     const int64_t t_process_image_start_us = ggml_time_us();
     process_prompt(0, ctx_llava, params, n_past);
     process_image_l(ctx_llava, embeds, params, n_past);
+    printf("after process_image_l\n");
     const int64_t t_process_image_end_us = ggml_time_us();
     float t_process_image_ms = (t_process_image_end_us - t_process_image_start_us) / 1000.0;
     LOG_TEE("\n%s: llama process image in %8.2f ms.\n", __func__, t_process_image_ms);
 
     llava_image_embed_free(embeds);
+    printf("after llava_image_embed_free\n");
     return ctx_llava;
 }
 
@@ -394,6 +404,81 @@ static const char * llama_loop(struct llava_context * ctx_llava,struct llama_sam
     return tmp;
 }
 
+#include <assert.h>
+
+// Used for debugging to print out beam tokens.
+struct ostream_beam_view {
+    llama_context * ctx;
+    llama_beam_view beam_view;
+};
+
+static std::ostream & operator<<(std::ostream & os, const ostream_beam_view & obv) {
+    os << "p(" << obv.beam_view.p << ") eob(" << std::boolalpha << obv.beam_view.eob << ") tokens(";
+    for (size_t i = 0 ; i < obv.beam_view.n_tokens ; ++i) {
+        os << llama_token_to_piece(obv.ctx, obv.beam_view.tokens[i]);
+    }
+    return os << ')';
+}
+
+struct beam_search_callback_data {
+    llama_context * ctx;
+    std::vector<llama_token> response;
+    std::vector<llama_token> response1;
+    std::vector<llama_token> response2;
+    std::vector<llama_token> response3;
+};
+
+// In this case, end-of-beam (eob) is equivalent to end-of-sentence (eos) but this need not always be the same.
+// For example, eob can be flagged due to maximum token length, stop words, etc.
+static bool is_at_eob(const beam_search_callback_data & callback_data, const llama_token * tokens, size_t n_tokens) {
+    return n_tokens && llama_token_is_eog(llama_get_model(callback_data.ctx), tokens[n_tokens-1]);
+}
+
+// Function matching type llama_beam_search_callback_fn_t.
+// Custom callback example is called each time the beams lengths increase:
+//  * Show progress by printing ',' following by number of convergent beam tokens if any.
+//  * When all beams converge to a common prefix, they are made available in beams_state.beams[0].
+//    This is also called when the stop condition is met.
+//    Collect tokens into std::vector<llama_token> response which is pointed to by callback_data.
+static void beam_search_callback(void * callback_data_ptr, llama_beams_state beams_state) {
+    auto& callback_data = *static_cast<beam_search_callback_data*>(callback_data_ptr);
+    // Mark beams as EOS as needed.
+    for (size_t i = 0 ; i < beams_state.n_beams ; ++i) {
+        llama_beam_view& beam_view = beams_state.beam_views[i];
+        if (!beam_view.eob && is_at_eob(callback_data, beam_view.tokens, beam_view.n_tokens)) {
+            beam_view.eob = true;
+        }
+    }
+    //printf(",");  // Show progress
+    if (const size_t n = beams_state.common_prefix_length) {
+        // callback_data.response.resize(callback_data.response.size() + n);
+        // callback_data.response1.resize(callback_data.response1.size() + n);
+        // callback_data.response2.resize(callback_data.response2.size() + n);
+        // callback_data.response3.resize(callback_data.response3.size() + n);
+        assert(0u < beams_state.n_beams);
+        const llama_token * tokens = beams_state.beam_views[0].tokens;
+        // std::copy(tokens, tokens + n, callback_data.response.end() - n);
+        // tokens = beams_state.beam_views[1].tokens;
+        // std::copy(tokens, tokens + n, callback_data.response1.end() - n);
+        // tokens = beams_state.beam_views[2].tokens;
+        // std::copy(tokens, tokens + n, callback_data.response2.end() - n);
+        // tokens = beams_state.beam_views[3].tokens;
+        // std::copy(tokens, tokens + n, callback_data.response3.end() - n);
+        //printf("%zu", n);
+        for(int i = 0; i < n; i++){
+            std::cout << llama_token_to_piece(callback_data.ctx, tokens[i]) << std::flush;
+        }
+    }
+    //fflush(stdout);
+#if 1 // DEBUG: print current beams for this iteration
+    // std::cout << "\n\nCurrent beams (last_call=" << beams_state.last_call << "):\n";
+    // for (size_t i = 0 ; i < beams_state.n_beams ; ++i) {
+    //     std::cout << "beams["<<i<<"]: " << ostream_beam_view{callback_data.ctx,beams_state.beam_views[i]} << std::endl;
+    // }
+   
+#endif
+}
+
 int main(int argc, char ** argv) {
     ggml_time_init();
 
@@ -403,6 +488,8 @@ int main(int argc, char ** argv) {
         show_additional_info(argc, argv);
         return 1;
     }
+
+    params.n_beams = 2;
 
 #ifndef LOG_DISABLE_LOGS
     log_set_target(log_filename_generator("llava", "log"));
@@ -429,23 +516,56 @@ int main(int argc, char ** argv) {
                 LOG_TEE("<user>%s\n", params.prompt.c_str());
                 LOG_TEE("<assistant>");
                 auto ctx_sampling = llama_init(ctx_llava, &params, params.prompt.c_str(), n_past, false);
-                const int max_tgt_len = params.n_predict < 0 ? 8192 : params.n_predict;
-                std::string response = "";
-                bool have_tmp = false;
-                for (int i = 0; i < max_tgt_len; i++) {
-                    auto tmp = llama_loop(ctx_llava, ctx_sampling, n_past);
-                    response += tmp;
-                    if (strcmp(tmp, "</s>") == 0){
-                        if(!have_tmp)continue;
-                        else break;
-                    }
-                    have_tmp = true;
-                    printf("%s", tmp);
-                    if (strstr(response.c_str(), "<user>")) break; // minicpm-v 
+                if(params.n_beams == 0){
+                    const int max_tgt_len = params.n_predict < 0 ? 8192 : params.n_predict;
+                    std::string response = "";
+                    bool have_tmp = false;
+                    for (int i = 0; i < max_tgt_len; i++) {
+                        auto tmp = llama_loop(ctx_llava, ctx_sampling, n_past);
+                        response += tmp;
+                        if (strcmp(tmp, "</s>") == 0){
+                            if(!have_tmp)continue;
+                            else break;
+                        }
+                        have_tmp = true;
+                        printf("%s", tmp);
+                        if (strstr(response.c_str(), "<user>")) break; // minicpm-v 
 
-                    fflush(stdout);
+                        fflush(stdout);
+                    }
+                    llama_sampling_free(ctx_sampling);
+                }else{
+                    beam_search_callback_data callback_data{ctx_llava->ctx_llama, {}};
+                    size_t const beam_width = static_cast<size_t>(params.n_beams);
+                    int const n_predict = params.n_predict;
+                    llama_beam_search(ctx_llava->ctx_llama, beam_search_callback, &callback_data, beam_width, n_past, n_predict);
+
+                    // std::cout << "\n\n";
+                    // for (llama_token const token_id : callback_data.response) {
+                    //     std::cout << llama_token_to_piece(ctx_llava->ctx_llama, token_id);
+                    // }
+                    // std::cout << std::endl;
                 }
-                llama_sampling_free(ctx_sampling);
+               
+                
+
+                // std::cout << "\n\n";
+                // for (llama_token const token_id : callback_data.response1) {
+                //     std::cout << llama_token_to_piece(ctx_llava->ctx_llama, token_id);
+                // }
+                // std::cout << std::endl;
+
+                // std::cout << "\n\n";
+                // for (llama_token const token_id : callback_data.response2) {
+                //     std::cout << llama_token_to_piece(ctx_llava->ctx_llama, token_id);
+                // }
+                // std::cout << std::endl;
+
+                // std::cout << "\n\n";
+                // for (llama_token const token_id : callback_data.response3) {
+                //     std::cout << llama_token_to_piece(ctx_llava->ctx_llama, token_id);
+                // }
+                // std::cout << std::endl;
             }
             else {
                 while (true) {
@@ -471,6 +591,11 @@ int main(int argc, char ** argv) {
         }
         printf("\n");
         llama_print_timings(ctx_llava->ctx_llama);
+
+        for(int i = 0; i < g_ids.size(); i++){
+            std::cout << g_ids[i] << " ";
+        }
+        std::cout << std::endl;
 
         ctx_llava->model = NULL;
         llava_free(ctx_llava);

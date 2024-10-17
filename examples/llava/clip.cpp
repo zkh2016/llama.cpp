@@ -613,6 +613,7 @@ static ggml_cgraph * clip_image_build_graph(clip_ctx * ctx, const clip_image_f32
     ggml_set_input(inp_raw);
 
     struct ggml_tensor * inp = ggml_conv_2d(ctx0, model.patch_embeddings, inp_raw, patch_size, patch_size, 0, 0, 1, 1);
+    ggml_set_name(inp, "conv2d");
 
     inp = ggml_reshape_3d(ctx0, inp, num_patches, hidden_size, batch_size);
     inp = ggml_cont(ctx0, ggml_permute(ctx0, inp, 1, 0, 2, 3));
@@ -641,8 +642,11 @@ static ggml_cgraph * clip_image_build_graph(clip_ctx * ctx, const clip_image_f32
     ggml_set_name(positions, "positions");
     ggml_set_input(positions);
 
+    auto local_pos_emb = ggml_get_rows(ctx0, model.position_embeddings, positions);
+    ggml_set_name(local_pos_emb, "local_pos_emb");
     embeddings =
-        ggml_add(ctx0, embeddings, ggml_get_rows(ctx0, model.position_embeddings, positions));
+        ggml_add(ctx0, embeddings, local_pos_emb);
+    printf("====minicpmv_version = %d", ctx->minicpmv_version);
 
     if (ctx->has_minicpmv_projector) {
         int pos_w = image_size_width/patch_size;
@@ -683,6 +687,9 @@ static ggml_cgraph * clip_image_build_graph(clip_ctx * ctx, const clip_image_f32
         // layernorm1
         {
             cur = ggml_norm(ctx0, cur, eps);
+            std::string name = std::string("vit_norm") + std::to_string(il);
+            ggml_set_name(cur,  name.c_str());
+
 
             cur = ggml_add(ctx0, ggml_mul(ctx0, cur, model.layers[il].ln_1_w),
                            model.layers[il].ln_1_b);
@@ -714,6 +721,8 @@ static ggml_cgraph * clip_image_build_graph(clip_ctx * ctx, const clip_image_f32
             V = ggml_reshape_3d(ctx0, V, num_positions, d_head, n_head * batch_size);
 
             struct ggml_tensor * KQ = ggml_mul_mat(ctx0, K, Q);
+            std::string name = "KQ_" + std::to_string(il);
+            ggml_set_name(KQ, name.c_str());
             KQ = ggml_soft_max_inplace(ctx0, KQ);
             struct ggml_tensor * KQV = ggml_mul_mat(ctx0, V, KQ);
             KQV = ggml_reshape_4d(ctx0, KQV, d_head, num_positions, n_head, batch_size);
@@ -1717,7 +1726,9 @@ static bool bicubic_resize(const clip_image_u8 &img, clip_image_u8 &dst, int tar
             }
             printf("\n");
         }else{
-            src_mat = cv::imread("D:\\project\\minicpmv2.7\\Archive\\5.png", cv::IMREAD_COLOR);
+            //src_mat = cv::imread("D:\\project\\minicpmv2.7\\Archive\\0.jpg", cv::IMREAD_COLOR);
+            //src_mat = cv::imread("D:\\project\\OpenCV\\b.jpg", cv::IMREAD_COLOR);
+            src_mat = cv::imread("D:\\project\\OpenCV\\bad.png", cv::IMREAD_COLOR);
             cv::cvtColor(src_mat, src_mat, cv::COLOR_BGR2RGB);
             for(int y = 0; y < src_mat.rows; y++){
                 for(int x = 0; x < src_mat.cols; x++){
@@ -2432,8 +2443,10 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
     const int pos_h = ctx->load_image_size->height/patch_size;
     
     {
+        printf("===set input, imgs->size = %d\n", imgs->size);
         struct ggml_tensor * inp_raw = ggml_graph_get_tensor(gf, "inp_raw");
         float * data = (float *)malloc(ggml_nbytes(inp_raw));
+        FILE *fp = fopen("c_data.txt", "a+");
 
         for (size_t i = 0; i < imgs->size; i++) {
             const int nx = imgs->data[i].nx;
@@ -2449,11 +2462,19 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
                     for (int y = 0; y < ny; y++) {
                         for (int x = 0; x < nx; x++) {
                             data[(b * 3 * n) + k * n + y * nx + x] = imgs->data[b].buf[3 * (y * nx + x) + k];
+                            
+                            fprintf(fp, "%.8f\n", imgs->data[b].buf[3 * (y * nx + x) + k]);
+                            // if(x != nx-1){
+                            //     fprintf(fp, ", ");
+                            // }
                         }
+                        //fprintf(fp, "\n");
                     }
                 }
             }
         }
+        fclose(fp);
+
         ggml_backend_tensor_set(inp_raw, data, 0, ggml_nbytes(inp_raw));
         free(data);
     }
@@ -2463,6 +2484,7 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
             struct ggml_tensor * positions = ggml_graph_get_tensor(gf, "positions");
 
             int* positions_data = (int*)malloc(ggml_nbytes(positions));
+            printf("num_positins = %d\n", num_positions);
             for (int i = 0; i < num_positions; i++) {
                 positions_data[i] = i;
             }
@@ -2483,11 +2505,17 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
             for (int i = 0; i < pos_w; i++){
                 bucket_coords_w[i] = std::floor(70.0*i/pos_w);
             }
-            for (int i = 0, id = 0; i < pos_h; i++){
+            int id = 0;
+            for (int i = 0; i < pos_h; i++){
                 for (int j = 0; j < pos_w; j++){
                     positions_data[id++] = bucket_coords_h[i]*70 + bucket_coords_w[j];
                 }
             }
+            // printf("positions_data %d:\n", id);
+            // for(int i = 0; i < id; i++){
+            //     //printf("%d ", positions_data[i]);
+            // }
+            // printf("\n");
             ggml_backend_tensor_set(positions, positions_data, 0, ggml_nbytes(positions));
             free(positions_data);
         }

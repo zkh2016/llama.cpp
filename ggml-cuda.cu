@@ -2409,13 +2409,16 @@ GGML_CALL static enum ggml_status ggml_backend_cuda_graph_compute(ggml_backend_t
     ggml_backend_cuda_context * cuda_ctx = (ggml_backend_cuda_context *)backend->context;
 
     ggml_cuda_set_device(cuda_ctx->device);
-
+    //printf("======nodes = %d\n", cgraph->n_nodes);
     for (int i = 0; i < cgraph->n_nodes; i++) {
         ggml_tensor * node = cgraph->nodes[i];
 
         if (ggml_is_empty(node) || node->op == GGML_OP_RESHAPE || node->op == GGML_OP_TRANSPOSE || node->op == GGML_OP_VIEW || node->op == GGML_OP_PERMUTE || node->op == GGML_OP_NONE) {
             continue;
         }
+        // if(cgraph->n_nodes == 1135){
+        //     printf("node %d: %s\n", i, node->name);
+        // }
 
 #ifndef NDEBUG
         assert(node->buffer->buft == ggml_backend_cuda_buffer_type(cuda_ctx->device));
@@ -2426,7 +2429,49 @@ GGML_CALL static enum ggml_status ggml_backend_cuda_graph_compute(ggml_backend_t
         }
 #endif
 
+        // if(strcmp("vit_norm0", node->name) == 0){
+        //     const ggml_tensor * src0 = node->src[0];
+        //     const int64_t ne00 = src0->ne[0];
+        //     const int64_t nrows = ggml_nrows(src0);
+        //     printf("norm0 input: %d %d, %d %d %d %d\n", ne00, nrows, src0->ne[0], src0->ne[1], src0->ne[2], src0->ne[3]);
+        //     const float * ptr = (const float *)src0->data;
+        //     std::vector<float> h(ne00 * nrows);
+        //     cudaDeviceSynchronize();
+        //     cudaMemcpy(h.data(), ptr, h.size() * sizeof(float), cudaMemcpyDeviceToHost);
+        //     FILE *fp = fopen("norm0_in.txt", "w");
+        //     for(int i = 0; i < ne00 * nrows; i++){
+        //         fprintf(fp, "%.7f\n", h[i]);
+        //     }
+        //     fclose(fp);
+        // }
+        // if(strcmp("vit_norm0", node->name) == 0){
+        //     ggml_tensor * src0 = node->src[0];
+        //     const int64_t ne00 = src0->ne[0];
+        //     const int64_t nrows = ggml_nrows(src0);
+        //     printf("norm0 input: %d %d, %d %d %d %d\n", ne00, nrows, src0->ne[0], src0->ne[1], src0->ne[2], src0->ne[3]);
+        //     float * ptr = (float *)src0->data;
+        //     FILE *fp = fopen("D:\\project\\skip\\norm0_in.txt", "rb");
+        //     std::vector<float> py_in(nrows * ne00);
+        //     fread(py_in.data(), py_in.size() *sizeof(float), 1, fp);
+        //     fclose(fp);
+        //     cudaMemcpy(ptr, py_in.data(), py_in.size() * sizeof(float), cudaMemcpyHostToDevice);
+        // }
+        
         bool ok = ggml_cuda_compute_forward(*cuda_ctx, node);
+        // if(strcmp("KQ_0", node->name) == 0){
+        //     const int64_t ne00 = node->ne[0];
+        //     const int64_t nrows = ggml_nrows(node);
+        //     const float * ptr = (const float *)node->data;
+        //     std::vector<float> h(ne00 * nrows);
+        //     cudaDeviceSynchronize();
+        //     cudaMemcpy(h.data(), ptr, h.size() * sizeof(float), cudaMemcpyDeviceToHost);
+        //     FILE *fp = fopen("KQ_0.txt", "w");
+        //     printf("%d %d\n", ne00, nrows);
+        //     for(int i = 0; i < ne00 * nrows; i++){
+        //         fprintf(fp, "%.7f\n", h[i]);
+        //     }
+        //     fclose(fp);
+        // }
         if (!ok) {
             fprintf(stderr, "%s: error: op not supported %s (%s)\n", __func__, node->name, ggml_op_name(node->op));
         }

@@ -13725,6 +13725,7 @@ struct llama_beam_search_data {
     // Requires beams is not empty.
     size_t find_common_prefix_length() {
         size_t common_prefix_length = beams[0].tokens.size();
+        //return common_prefix_length;
         for (size_t i = 1 ; i < beams.size() ; ++i) {
             common_prefix_length = std::min(common_prefix_length, beams[i].tokens.size());
             for (size_t j = 0 ; j < common_prefix_length ; ++j) {
@@ -13755,7 +13756,7 @@ struct llama_beam_search_data {
     void loop(const llama_beam_search_callback_fn_t callback, void * const callback_data) {
         beams.push_back({{}, 1.0f, false});  // Start with one empty beam w/ probability = 1.0 and !eob.
         const auto not_eob = [](const llama_beam & beam) { return !beam.eob; };
-        for (int i = 0 ; i < n_predict && std::any_of(beams.begin(),beams.end(),not_eob) &&
+        for (int i = 0 ; i < n_predict /*&& std::any_of(beams.begin(),beams.end(),not_eob)*/ &&
                        !beams[top_beam_index()].eob ; ++i) {
             callback(callback_data, get_beams_state(false));  // Sets common_prefix_length
             update_beams_from_beam_views();   // Update values (p,eob) that callback may have changed.
