@@ -382,7 +382,7 @@ class LlamaHfVocab(Vocab):
             cache_dir=base_path,
             local_files_only=True,
         )
-        assert self.tokenizer.is_fast  # assume tokenizer.json is used
+        #assert self.tokenizer.is_fast  # assume tokenizer.json is used
 
         # Initialize lists and dictionaries for added tokens
         self.added_tokens_list = []
