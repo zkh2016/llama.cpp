@@ -608,6 +608,11 @@ static ggml_cgraph * clip_image_build_graph(clip_ctx * ctx, const clip_image_f32
     struct ggml_context * ctx0 = ggml_init(params);
     struct ggml_cgraph * gf = ggml_new_graph(ctx0);
 
+    printf("4d in: %d %d\n", image_size_height, image_size_width);
+    /*
+        (1032, 1152)
+        (1015, 1152)
+    */
     struct ggml_tensor * inp_raw = ggml_new_tensor_4d(ctx0, GGML_TYPE_F32, image_size_width, image_size_height, 3, batch_size);
     ggml_set_name(inp_raw, "inp_raw");
     ggml_set_input(inp_raw);
@@ -1726,7 +1731,7 @@ static bool bicubic_resize(const clip_image_u8 &img, clip_image_u8 &dst, int tar
             }
             printf("\n");
         }else{
-            //src_mat = cv::imread("D:\\project\\minicpmv2.7\\Archive\\0.jpg", cv::IMREAD_COLOR);
+            //src_mat = cv::imread("D:\\project\\minicpmv2.7\\Archive\\6.png", cv::IMREAD_COLOR);
             //src_mat = cv::imread("D:\\project\\OpenCV\\b.jpg", cv::IMREAD_COLOR);
             src_mat = cv::imread("D:\\project\\OpenCV\\bad.png", cv::IMREAD_COLOR);
             cv::cvtColor(src_mat, src_mat, cv::COLOR_BGR2RGB);
@@ -2443,14 +2448,16 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
     const int pos_h = ctx->load_image_size->height/patch_size;
     
     {
-        printf("===set input, imgs->size = %d\n", imgs->size);
         struct ggml_tensor * inp_raw = ggml_graph_get_tensor(gf, "inp_raw");
+        printf("===set input, imgs->size = %d, inp_raw size = %d\n", imgs->size, ggml_nbytes(inp_raw) / sizeof(float));
+
         float * data = (float *)malloc(ggml_nbytes(inp_raw));
         FILE *fp = fopen("c_data.txt", "a+");
 
         for (size_t i = 0; i < imgs->size; i++) {
             const int nx = imgs->data[i].nx;
             const int ny = imgs->data[i].ny;
+            printf("ny = %d, nx = %d\n", ny, nx);
             if (!ctx->has_minicpmv_projector) {
                 GGML_ASSERT(nx == image_size && ny == image_size);
             }
@@ -2772,6 +2779,7 @@ int clip_n_mmproj_embd(const struct clip_ctx * ctx) {
 }
 
 int clip_is_minicpmv(const struct clip_ctx * ctx) {
+    // printf("clip_is_minicpmv : %d\n", ctx->minicpmv_version);
     if (ctx->has_minicpmv_projector) {
         return ctx->minicpmv_version;
     }

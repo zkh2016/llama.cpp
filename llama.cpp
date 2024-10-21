@@ -13574,7 +13574,10 @@ struct llama_beam {
     // Shift off first n tokens and discard them.
     void shift_tokens(const size_t n) {
         if (n) {
-            std::copy(tokens.begin() + n, tokens.end(), tokens.begin());
+            //std::copy(tokens.begin() + n, tokens.end(), tokens.begin());
+            std::vector<llama_token> tmp_tokens(tokens.size() - n);
+            std::copy(tokens.begin() + n, tokens.end(), tmp_tokens.begin());
+            std::copy(tmp_tokens.begin(), tmp_tokens.end(), tokens.begin());
             tokens.resize(tokens.size() - n);
         }
     }
@@ -13728,12 +13731,12 @@ struct llama_beam_search_data {
         //return common_prefix_length;
         for (size_t i = 1 ; i < beams.size() ; ++i) {
             common_prefix_length = std::min(common_prefix_length, beams[i].tokens.size());
-            for (size_t j = 0 ; j < common_prefix_length ; ++j) {
-                if (beams[0].tokens[j] != beams[i].tokens[j]) {
-                    common_prefix_length = j;
-                    break;
-                }
-            }
+            // for (size_t j = 0 ; j < common_prefix_length ; ++j) {
+            //     if (beams[0].tokens[j] != beams[i].tokens[j]) {
+            //         common_prefix_length = j;
+            //         break;
+            //     }
+            // }
         }
         return common_prefix_length;
     }

@@ -206,6 +206,7 @@ static clip_image_f32 * reshape_by_patch(clip_image_f32 * image, int patch_size)
     int width = image->nx;
     int height = image->ny;
     int num_patches = (height / patch_size) * (width / patch_size);
+    printf("width = %d, height = %d, num_patches = %d\n", width, height, num_patches);
     clip_image_f32 * patch = clip_image_f32_init();
     patch->nx = patch_size * num_patches;
     patch->ny = patch_size;
@@ -255,6 +256,7 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
             int patch_size = 14;
             load_image_size->width = img_res_v.data[i].nx;
             load_image_size->height = img_res_v.data[i].ny;
+            printf("load_image_size = %d %d\n", load_image_size->height, load_image_size->width);
             clip_add_load_image_size(ctx_clip, load_image_size);
             clip_image_f32* ptr = reshape_by_patch(&img_res_v.data[i], patch_size);
             // printf("slice_%d, (%d, %d):\n", i, ptr->ny, ptr->nx);

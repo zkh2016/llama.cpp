@@ -178,7 +178,7 @@ static void process_eval_image_embed_l(struct llava_context * ctx_llava, const s
     int n_patches = clip_n_patches(ctx_llava->ctx_clip);
     int token_len = clip_n_mmproj_embd(ctx_llava->ctx_clip)*sizeof(float);
     float * image_embed = (float *)malloc(clip_embd_nbytes(ctx_llava->ctx_clip)+2*token_len);
-    printf("sp = %d, n_patches=%d, token_len=%d\n", sp, n_patches, token_len);
+    // printf("sp = %d, n_patches=%d, token_len=%d\n", sp, n_patches, token_len);
     if (sp == 0) {
         std::memcpy(image_embed, buffer, token_len);
         std::memcpy((char*)image_embed + (n_patches + 1) * token_len, buffer+token_len, token_len);
@@ -188,11 +188,11 @@ static void process_eval_image_embed_l(struct llava_context * ctx_llava, const s
         std::memcpy((char*)image_embed + (n_patches + 1) * token_len, buffer+token_len*3, token_len);
     }
     
-    printf("before memcpy, idx=%d, nbytes=%d, token_len=%d, \n", idx, clip_embd_nbytes(ctx_llava->ctx_clip), token_len);
-    printf("addr: %x\n", embeds->embed);
+    // printf("before memcpy, idx=%d, nbytes=%d, token_len=%d, \n", idx, clip_embd_nbytes(ctx_llava->ctx_clip), token_len);
+    // printf("addr: %x\n", embeds->embed);
     std::memcpy((char*)image_embed+token_len, embeds->embed + idx * clip_n_patches(ctx_llava->ctx_clip) * clip_n_mmproj_embd(ctx_llava->ctx_clip), clip_embd_nbytes(ctx_llava->ctx_clip));
 
-    printf("after memcpy\n");
+    // printf("after memcpy\n");
     auto slice_embed = (llava_image_embed*)malloc(sizeof(llava_image_embed));
     slice_embed->embed = image_embed;
     slice_embed->n_image_pos = clip_n_patches(ctx_llava->ctx_clip) + 2;
@@ -307,6 +307,7 @@ static bool process_prompt(int type, struct llava_context * ctx_llava, gpt_param
         return eval_string(ctx_llava->ctx_llama, user_prompt.c_str(), params->n_batch, &n_past, false);
     }
     else if (type==2) {
+        // printf("has_minicpmv_projector=%d\n", has_minicpmv_projector);
         if (has_minicpmv_projector == 1) {
             return eval_string(ctx_llava->ctx_llama, "<AI>\n", params->n_batch, &n_past, false);
         }
@@ -364,13 +365,12 @@ static struct llava_context * minicpmv_init(gpt_params * params, const std::stri
     const int64_t t_process_image_start_us = ggml_time_us();
     process_prompt(0, ctx_llava, params, n_past);
     process_image_l(ctx_llava, embeds, params, n_past);
-    printf("after process_image_l\n");
+
     const int64_t t_process_image_end_us = ggml_time_us();
     float t_process_image_ms = (t_process_image_end_us - t_process_image_start_us) / 1000.0;
     LOG_TEE("\n%s: llama process image in %8.2f ms.\n", __func__, t_process_image_ms);
 
     llava_image_embed_free(embeds);
-    printf("after llava_image_embed_free\n");
     return ctx_llava;
 }
 
@@ -489,7 +489,7 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
-    params.n_beams = 2;
+    params.n_beams = 1;
 
 #ifndef LOG_DISABLE_LOGS
     log_set_target(log_filename_generator("llava", "log"));
@@ -511,7 +511,7 @@ int main(int argc, char ** argv) {
             auto image = params.image;
             ctx_llava = minicpmv_init(&params, image, n_past);
             //release vit memory
-            clip_free(ctx_llava->ctx_clip);
+            //clip_free(ctx_llava->ctx_clip);
             if (!params.prompt.empty()) {
                 LOG_TEE("<user>%s\n", params.prompt.c_str());
                 LOG_TEE("<assistant>");
