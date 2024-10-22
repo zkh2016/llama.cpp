@@ -1001,7 +1001,7 @@ static ggml_cgraph * clip_image_build_graph(clip_ctx * ctx, const clip_image_f32
                 else if (ctx->minicpmv_version == 4) {
                     hidden_size = 4096;
                     n_head = hidden_size/d_head;
-                    num_query = 96;
+                    num_query = 128;
                 }
 
                 struct ggml_tensor * Q = ggml_add(ctx0, ggml_mul_mat(ctx0, model.mm_model_attn_q_w, q), model.mm_model_attn_q_b);
@@ -2304,7 +2304,7 @@ int clip_n_patches(const struct clip_ctx * ctx) {
             n_patches = 64;
         }
         else if (ctx->minicpmv_version == 4) {
-            n_patches = 96;
+            n_patches = 128;
         }
     }
 

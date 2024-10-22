@@ -547,12 +547,19 @@ minicpmv_version = args.minicpmv_version
 emb_dim = 4096
 if minicpmv_version == 1:
     emb_dim = 2304
+    block_count = 26
 elif minicpmv_version == 2:
     emb_dim = 4096
+    block_count = 27
 elif minicpmv_version == 3:
     emb_dim = 3584
+    block_count = 27
 elif minicpmv_version == 4:
     emb_dim = 4096
+    block_count = 27
+elif minicpmv_version == 5:
+    emb_dim = 1536
+    block_count = 27
     
 default_vision_config = {
         "hidden_size": 1152,
@@ -629,7 +636,6 @@ if has_vision_encoder:
     fout.add_uint32("clip.vision.projection_dim", 0)
     fout.add_uint32(add_key_str(KEY_ATTENTION_HEAD_COUNT, VISION), 16)
     fout.add_float32(add_key_str(KEY_ATTENTION_LAYERNORM_EPS, VISION), 1e-6)
-    block_count = default_vision_config["num_hidden_layers"]
     fout.add_uint32(add_key_str(KEY_BLOCK_COUNT, VISION), block_count)
 
     if processor is not None:
@@ -644,9 +650,69 @@ if has_vision_encoder:
 use_gelu = True
 fout.add_bool("clip.use_gelu", use_gelu)
 
+def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
+    """
+    embed_dim: output dimension for each position
+    pos: a list of positions to be encoded: size (M,)
+    out: (M, D)
+    """
+    assert embed_dim % 2 == 0
+    omega = np.arange(embed_dim // 2, dtype=np.float32)
+    omega /= embed_dim / 2.
+    omega = 1. / 10000 ** omega  # (D/2,)
+
+    pos = pos.reshape(-1)  # (M,)
+    out = np.einsum('m,d->md', pos, omega)  # (M, D/2), outer product
+
+    emb_sin = np.sin(out)  # (M, D/2)
+    emb_cos = np.cos(out)  # (M, D/2)
+
+    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
+    return emb
+
+def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
+    assert embed_dim % 2 == 0
+
+    # use half of dimensions to encode grid_h
+    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
+    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
+
+    emb = np.concatenate([emb_h, emb_w], axis=1)  # (H*W, D)
+    return emb
+
+
+# https://github.com/facebookresearch/mae/blob/efb2a8062c206524e35e47d04501ed4f544c0ae8/util/pos_embed.py#L20
+def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
+    """
+    grid_size: int of the grid height and width
+    return:
+    pos_embed: [grid_size*grid_size, embed_dim] or [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
+    """
+    if isinstance(grid_size, int):
+        grid_h_size, grid_w_size = grid_size, grid_size
+    else:
+        grid_h_size, grid_w_size = grid_size[0], grid_size[1]
+
+    grid_h = np.arange(grid_h_size, dtype=np.float32)
+    grid_w = np.arange(grid_w_size, dtype=np.float32)
+    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
+    grid = np.stack(grid, axis=0)
+
+    grid = grid.reshape([2, 1, grid_h_size, grid_w_size])
+    pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
+    if cls_token:
+        pos_embed = np.concatenate([np.zeros([1, embed_dim]), pos_embed], axis=0)
+    return pos_embed
+
 def _replace_name_resampler(s, v):
+    if re.match("resampler.pos_embed", s):
+        return {
+            s: v,
+            re.sub("pos_embed", "pos_embed_k", s): torch.from_numpy(get_2d_sincos_pos_embed(emb_dim, (70, 70))),
+        }
     if re.match("resampler.proj", s):
         return {
+            re.sub("proj", "pos_embed_k", s): torch.from_numpy(get_2d_sincos_pos_embed(emb_dim, (70, 70))),
             re.sub("proj", "proj.weight", s): v.transpose(-1, -2).contiguous(),
         }
     if re.match("resampler.attn.in_proj_.*", s):
@@ -694,8 +760,7 @@ if has_minicpmv_projector:
 def _replace_name(s, v):
     s = "vision_model." + s
     if re.match("vision_model.embeddings.position_embedding", s):
-        # v = v.unsqueeze(0)
-        print(v)
+        v = v.unsqueeze(0)
         return {s: v}
 
     return {s: v}

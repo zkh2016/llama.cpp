@@ -235,7 +235,7 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
     int num_image_embeds = embeds->n_image_pos / clip_n_patches(ctx_llava->ctx_clip);    
     LOG_TEE("%s: image token past: %d\n", __func__, n_past);
 
-    std::string fname = "D:\\project\\MinicpmModel2720\\sp.raw";
+    std::string fname = "D:\\project\\minivpm-v-lenovo31-v3-sft\\model_skip\\sp.raw";
     auto file = fopen(fname.c_str(), "rb");
     if (file == NULL) {
         LOG_TEE("%s: can't read file %s\n", __func__, fname.c_str());
@@ -489,7 +489,7 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
-    params.n_beams = 1;
+    params.n_beams = 0;
 
 #ifndef LOG_DISABLE_LOGS
     log_set_target(log_filename_generator("llava", "log"));
