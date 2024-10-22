@@ -560,6 +560,9 @@ elif minicpmv_version == 4:
 elif minicpmv_version == 5:
     emb_dim = 1536
     block_count = 27
+elif minicpmv_version == 6:
+    emb_dim = 4096
+    block_count = 27
     
 default_vision_config = {
         "hidden_size": 1152,
@@ -579,6 +582,12 @@ if minicpmv_version == 3:
 elif minicpmv_version == 4:
     vision_config = SiglipVisionConfig(**default_vision_config)
     model = SiglipVisionTransformer(vision_config)
+elif minicpmv_version == 5:
+    vision_config = SiglipVisionConfig(**default_vision_config)
+    model = SiglipVisionTransformer(vision_config)
+elif minicpmv_version == 6:
+    vision_config = SiglipVisionConfig(**default_vision_config)
+    model = SiglipVisionTransformer(vision_config)    
     
 processor = None
 # if model.attn_pool is not None:
