@@ -1,5 +1,7 @@
-set(OpenCV_DIR "D:\\project\\OpenCV\\opencv\\build")
+#set(OpenCV_DIR "D:\\project\\OpenCV\\opencv\\build")
+find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
+
 
 add_library(llava OBJECT
             llava.cpp
