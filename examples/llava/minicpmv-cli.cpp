@@ -157,9 +157,26 @@ static bool eval_id(struct llama_context * ctx_llama, int id, int * n_past) {
     return eval_tokens(ctx_llama, tokens, 1, n_past);
 }
 
+static bool eval_ids(struct llama_context * ctx_llama, std::vector<llama_token> ids, int n_batch, int * n_past) {
+    //std::vector<llama_token> tokens;
+    //tokens.push_back(id);
+
+    printf("*****eval_ids : ");
+    for(int i = 0; i < ids.size(); i++){
+        printf("%d ", ids[i]);
+    }
+    printf("\n");
+    return eval_tokens(ctx_llama, ids, n_batch, n_past);
+}
+
 static bool eval_string(struct llama_context * ctx_llama, const char* str, int n_batch, int * n_past, bool add_bos){
     std::string              str2     = str;
     std::vector<llama_token> embd_inp = ::llama_tokenize(ctx_llama, str2, add_bos, true);
+    printf("*****eval_string : ");
+    for(int i = 0; i < embd_inp.size(); i++){
+        printf("%d ", embd_inp[i]);
+    }
+    printf("\n");
     return eval_tokens(ctx_llama, embd_inp, n_batch, n_past);
 }
 
@@ -235,7 +252,8 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
     int num_image_embeds = embeds->n_image_pos / clip_n_patches(ctx_llava->ctx_clip);    
     LOG_TEE("%s: image token past: %d\n", __func__, n_past);
 
-    std::string fname = "D:\\project\\minivpm-v-lenovo31-v3-sft\\model_skip\\sp.raw";
+    //std::string fname = "D:\\project\\minivpm-v-lenovo31-v3-sft\\model_skip\\sp.raw";
+    std::string fname = "/DATA/disk0/zkh/minivpm-v-lenovo31-v3-sft/model_skip/sp.raw";
     auto file = fopen(fname.c_str(), "rb");
     if (file == NULL) {
         LOG_TEE("%s: can't read file %s\n", __func__, fname.c_str());
@@ -268,6 +286,7 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
     printf("after process_eval_image_embed_l\n");
     if (num_image_embeds > 1) {
         size_t num_image_embeds_col = clip_uhd_num_image_embeds_col(ctx_llava->ctx_clip);
+        printf("num_image_embeds = %d, num_image_embeds_col = %d\n", num_image_embeds, num_image_embeds_col); 
         for (size_t i = 0; i < (num_image_embeds-1)/num_image_embeds_col; ++i) {
             for (size_t j = 0; j < num_image_embeds_col; ++j) {
                 process_eval_image_embed_l(ctx_llava, embeds, params->n_batch, &n_past, idx++, 1, buffer);
@@ -286,6 +305,7 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
 
 static bool process_prompt(int type, struct llava_context * ctx_llava, gpt_params * params, int &n_past, std::string prompt = ""){
     int has_minicpmv_projector = clip_is_minicpmv(ctx_llava->ctx_clip);
+    printf("#####has_minicpmv_projector = %d, type=%d\n", has_minicpmv_projector, type);
     if (type==0) {
         std::string system_prompt;
         if (has_minicpmv_projector == 1) {
@@ -300,11 +320,19 @@ static bool process_prompt(int type, struct llava_context * ctx_llava, gpt_param
         else if (has_minicpmv_projector == 4) {
             system_prompt = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n";
         }
+        else if (has_minicpmv_projector == 6) {
+            system_prompt = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n";
+        }
         return eval_string(ctx_llava->ctx_llama, system_prompt.c_str(), params->n_batch, &n_past, false);
     }
     else if (type==1) {
-        std::string user_prompt = prompt;
-        return eval_string(ctx_llava->ctx_llama, user_prompt.c_str(), params->n_batch, &n_past, false);
+        //std::string user_prompt = prompt;
+        //return eval_string(ctx_llava->ctx_llama, user_prompt.c_str(), params->n_batch, &n_past, false);
+        FILE *fp = fopen("/DATA/disk0/zkh/project/tests/prompt_ids.bin", "rb");
+        std::vector<int> prompt_ids(111);
+        fread(prompt_ids.data(), 1, prompt_ids.size() * sizeof(int), fp);
+        fclose(fp);
+        return eval_ids(ctx_llava->ctx_llama, prompt_ids, params->n_batch, &n_past);
     }
     else if (type==2) {
         // printf("has_minicpmv_projector=%d\n", has_minicpmv_projector);
@@ -318,6 +346,9 @@ static bool process_prompt(int type, struct llava_context * ctx_llava, gpt_param
             return eval_string(ctx_llava->ctx_llama, "<|im_end|><|im_start|>assistant\n", params->n_batch, &n_past, false);
         }
         else if (has_minicpmv_projector == 4) {
+            return eval_string(ctx_llava->ctx_llama, "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n", params->n_batch, &n_past, false);
+        }
+        else if (has_minicpmv_projector == 6) {
             return eval_string(ctx_llava->ctx_llama, "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n", params->n_batch, &n_past, false);
         }
     }
@@ -344,6 +375,22 @@ static const char * sample(struct llama_sampling_context * ctx_sampling,
 
 static struct llava_context * minicpmv_init(gpt_params * params, const std::string & fname, int &n_past){
     auto ctx_llava = llava_init_context(params);
+    if(false){
+        //[1, 1033, 4096])
+        int len = 1033;
+        float* embd = (float*)malloc(len * 4096 * sizeof(float));
+        FILE *fp = fopen("/DATA/disk0/zkh/project/tests/inputs_embeds.bin", "rb");
+        fread(embd, 1, len*4096 * sizeof(float), fp);
+        fclose(fp);
+
+        auto slice_embed = (llava_image_embed*)malloc(sizeof(llava_image_embed));
+        slice_embed->embed = embd;
+        slice_embed->n_image_pos = len;
+        llava_eval_image_embed(ctx_llava->ctx_llama, slice_embed, params->n_batch, &n_past);
+        llava_image_embed_free(slice_embed);
+        return ctx_llava;
+    }
+
     auto embeds = llava_image_embed_make_with_filename(ctx_llava->ctx_clip, params->n_threads, fname.c_str());
     if (!embeds) {
         LOG_TEE("error: failed to load image %s. Terminating\n\n", fname.c_str());
