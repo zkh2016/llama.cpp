@@ -1740,7 +1740,9 @@ static bool bicubic_resize(const clip_image_u8 &img, clip_image_u8 &dst, int tar
         }else{
             //src_mat = cv::imread("D:\\project\\minicpmv2.7\\Archive\\6.png", cv::IMREAD_COLOR);
             //src_mat = cv::imread("D:\\project\\OpenCV\\b.jpg", cv::IMREAD_COLOR);
-            src_mat = cv::imread("/DATA/disk0/zkh/project/tests/bad.png", cv::IMREAD_COLOR);
+            //src_mat = cv::imread("/DATA/disk0/zkh/project/tests/bad.png", cv::IMREAD_COLOR);
+            src_mat = cv::imread("/DATA/disk0/zkh/project/tests/dataset/Difficult-Multi-Text_Chart-Text+Chart_003.png", cv::IMREAD_COLOR);
+            //src_mat = cv::imread("/DATA/disk0/zkh/project/tests/dataset/Difficult-Single-Text-Text_001.png", cv::IMREAD_COLOR);
             cv::cvtColor(src_mat, src_mat, cv::COLOR_BGR2RGB);
             for(int y = 0; y < src_mat.rows; y++){
                 for(int x = 0; x < src_mat.cols; x++){
