@@ -86,13 +86,14 @@ static llava_image_embed * llava_image_embed_make_with_prompt_base64(struct clip
     auto img_bytes = std::vector<unsigned char>(required_bytes);
     base64::decode(base64_str.begin(), base64_str.end(), img_bytes.begin());
 
-    auto embed = llava_image_embed_make_with_bytes(ctx_clip, n_threads, img_bytes.data(), img_bytes.size());
-    if (!embed) {
-        LOG_TEE("%s: could not load image from base64 string.\n", __func__);
-        return NULL;
-    }
+    //auto embed = llava_image_embed_make_with_bytes(ctx_clip, n_threads, img_bytes.data(), img_bytes.size());
+    //if (!embed) {
+    //    LOG_TEE("%s: could not load image from base64 string.\n", __func__);
+    //    return NULL;
+    //}
 
-    return embed;
+    //return embed;
+    return NULL;
 }
 
 static std::string remove_image_from_prompt(const std::string& prompt, const char * replacement = "") {

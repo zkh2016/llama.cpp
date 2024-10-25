@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <vector>
 #include <numeric>
+#include <opencv2/opencv.hpp>
 
 // RGB uint8 image
 struct clip_image_u8 {
@@ -231,12 +232,12 @@ static clip_image_f32 * reshape_by_patch(clip_image_f32 * image, int patch_size)
     return patch;
 }
 
-static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const clip_image_u8 * img, float * image_embd, int * n_img_pos) {
+static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, cv::Mat& img, float * image_embd, int * n_img_pos) {
     // std::vector<clip_image_f32*> img_res_v; // format VectN x H x W x RGB (N x 336 x 336 x 3), so interleaved RGB - different to the python implementation which is N x 3 x 336 x 336
     clip_image_f32_batch img_res_v;
     img_res_v.size = 0;
     img_res_v.data = nullptr;
-    if (!clip_image_preprocess(ctx_clip, img, &img_res_v)) {
+    if (!clip_mat_preprocess(ctx_clip, img, &img_res_v)) {
         LOG_TEE("%s: unable to preprocess image\n", __func__);
         delete[] img_res_v.data;
         return false;
@@ -298,8 +299,8 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
             free(image_embd_v[i]);
         }
         image_embd_v.clear();
-        load_image_size->width = img->nx;
-        load_image_size->height = img->ny;
+        load_image_size->width = img.rows;//img->nx;
+        load_image_size->height = img.cols;//img->ny;
         clip_add_load_image_size(ctx_clip, load_image_size);
         LOG_TEE("%s: load_image_size %d %d\n", __func__, load_image_size->width, load_image_size->height);
         delete[] img_res_v.data;
@@ -347,7 +348,7 @@ static bool encode_image_with_clip(clip_ctx * ctx_clip, int n_threads, const cli
 
         const int32_t image_size = clip_image_size(ctx_clip);
 
-        struct clip_image_grid_shape grid_shape = get_anyres_image_grid_shape({img->nx,img->ny}, grid_pinpoints, image_size);
+        struct clip_image_grid_shape grid_shape = get_anyres_image_grid_shape({img.cols,img.rows}, grid_pinpoints, image_size);
 
         int n_img_pos_out;
         clip_llava_handle_patches(ctx_clip, image_embd_v, grid_shape, image_embd, &n_img_pos_out);
@@ -385,7 +386,7 @@ bool llava_validate_embed_size(const llama_context * ctx_llama, const clip_ctx *
     return true;
 }
 
-bool llava_image_embed_make_with_clip_img(clip_ctx * ctx_clip, int n_threads, const clip_image_u8 * img, float ** image_embd_out, int * n_img_pos_out) {
+bool llava_image_embed_make_with_clip_img(clip_ctx * ctx_clip, int n_threads, cv::Mat& img, float ** image_embd_out, int * n_img_pos_out) {
     int num_max_patches = 6;
     if (clip_is_minicpmv(ctx_clip)) {
         num_max_patches = 10;
@@ -426,25 +427,25 @@ bool llava_eval_image_embed(llama_context * ctx_llama, const struct llava_image_
     return true;
 }
 
-struct llava_image_embed * llava_image_embed_make_with_bytes(struct clip_ctx * ctx_clip, int n_threads, const unsigned char * image_bytes, int image_bytes_length) {
-    clip_image_u8 * img = clip_image_u8_init();
-    if (!clip_image_load_from_bytes(image_bytes, image_bytes_length, img)) {
-        clip_image_u8_free(img);
-        LOG_TEE("%s: can't load image from bytes, is it a valid image?", __func__);
-        return NULL;
-    }
+struct llava_image_embed * llava_image_embed_make_with_bytes(struct clip_ctx * ctx_clip, int n_threads, cv::Mat& img) {
+    //clip_image_u8 * img = clip_image_u8_init();
+    //if (!clip_image_load_from_bytes(image_bytes, image_bytes_length, img)) {
+    //    clip_image_u8_free(img);
+    //    LOG_TEE("%s: can't load image from bytes, is it a valid image?", __func__);
+    //    return NULL;
+    //}
 
     float* image_embed = NULL;
     int n_image_pos = 0;
     bool image_embed_result = llava_image_embed_make_with_clip_img(ctx_clip, n_threads, img, &image_embed, &n_image_pos);
     if (!image_embed_result) {
-        clip_image_u8_free(img);
+        //clip_image_u8_free(img);
         LOG_TEE("%s: coulnd't embed the image\n", __func__);
         return NULL;
     }
     printf("with_bytes: %x\n", image_embed);
 
-    clip_image_u8_free(img);
+    //clip_image_u8_free(img);
     auto result = (llava_image_embed*)malloc(sizeof(llava_image_embed));
     result->embed = image_embed;
     result->n_image_pos = n_image_pos;
@@ -487,13 +488,14 @@ static bool load_file_to_bytes(const char* path, unsigned char** bytesOut, long 
 struct llava_image_embed * llava_image_embed_make_with_filename(struct clip_ctx * ctx_clip, int n_threads, const char * image_path) {
     unsigned char* image_bytes;
     long image_bytes_length;
-    auto loaded = load_file_to_bytes(image_path, &image_bytes, &image_bytes_length);
-    if (!loaded) {
-        LOG_TEE("%s: failed to load %s\n", __func__, image_path);
-        return NULL;
-    }
+    //auto loaded = load_file_to_bytes(image_path, &image_bytes, &image_bytes_length);
+    //if (!loaded) {
+    //    LOG_TEE("%s: failed to load %s\n", __func__, image_path);
+    //    return NULL;
+    //}
+    auto src_mat = cv::imread(image_path, cv::IMREAD_COLOR);
 
-    llava_image_embed *embed = llava_image_embed_make_with_bytes(ctx_clip, n_threads, image_bytes, image_bytes_length);
+    llava_image_embed *embed = llava_image_embed_make_with_bytes(ctx_clip, n_threads, src_mat);
     free(image_bytes);
 
     return embed;

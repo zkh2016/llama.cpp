@@ -253,7 +253,7 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
     LOG_TEE("%s: image token past: %d\n", __func__, n_past);
 
     //std::string fname = "D:\\project\\minivpm-v-lenovo31-v3-sft\\model_skip\\sp.raw";
-    std::string fname = "/DATA/disk0/zkh/minivpm-v-lenovo31-v3-sft/model_skip/sp.raw";
+    std::string fname = "/DATA/disk0/zkh/job_838808_ckpt_800/model_skip/sp.raw";
     auto file = fopen(fname.c_str(), "rb");
     if (file == NULL) {
         LOG_TEE("%s: can't read file %s\n", __func__, fname.c_str());
@@ -326,13 +326,13 @@ static bool process_prompt(int type, struct llava_context * ctx_llava, gpt_param
         return eval_string(ctx_llava->ctx_llama, system_prompt.c_str(), params->n_batch, &n_past, false);
     }
     else if (type==1) {
-        //std::string user_prompt = prompt;
-        //return eval_string(ctx_llava->ctx_llama, user_prompt.c_str(), params->n_batch, &n_past, false);
-        FILE *fp = fopen("/DATA/disk0/zkh/project/tests/prompt_ids.bin", "rb");
-        std::vector<int> prompt_ids(111);
-        fread(prompt_ids.data(), 1, prompt_ids.size() * sizeof(int), fp);
-        fclose(fp);
-        return eval_ids(ctx_llava->ctx_llama, prompt_ids, params->n_batch, &n_past);
+        std::string user_prompt = prompt;
+        return eval_string(ctx_llava->ctx_llama, user_prompt.c_str(), params->n_batch, &n_past, false);
+        //FILE *fp = fopen("/DATA/disk0/zkh/project/tests/prompt_ids.bin", "rb");
+        //std::vector<int> prompt_ids(111);
+        //fread(prompt_ids.data(), 1, prompt_ids.size() * sizeof(int), fp);
+        //fclose(fp);
+        //return eval_ids(ctx_llava->ctx_llama, prompt_ids, params->n_batch, &n_past);
     }
     else if (type==2) {
         // printf("has_minicpmv_projector=%d\n", has_minicpmv_projector);
@@ -446,7 +446,6 @@ static struct llama_sampling_context * llama_init(struct llava_context * ctx_lla
 }
 
 static const char * llama_loop(struct llava_context * ctx_llava,struct llama_sampling_context * ctx_sampling, int &n_past){
-
     const char * tmp = sample(ctx_sampling, ctx_llava->ctx_llama, &n_past);
     return tmp;
 }

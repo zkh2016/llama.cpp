@@ -1720,7 +1720,6 @@ static bool bicubic_resize(const clip_image_u8 &img, clip_image_u8 &dst, int tar
         FILE *fp_src = fopen("src.txt", "w");
         FILE *fp_resize = fopen("resize.txt", "w");
         if(false){          
-            
             printf("src size = %d %d\n", img.ny, img.nx);
 
             for(int i = 0; i < src_mat.rows; i++){
@@ -1741,8 +1740,61 @@ static bool bicubic_resize(const clip_image_u8 &img, clip_image_u8 &dst, int tar
             //src_mat = cv::imread("D:\\project\\minicpmv2.7\\Archive\\6.png", cv::IMREAD_COLOR);
             //src_mat = cv::imread("D:\\project\\OpenCV\\b.jpg", cv::IMREAD_COLOR);
             //src_mat = cv::imread("/DATA/disk0/zkh/project/tests/bad.png", cv::IMREAD_COLOR);
-            src_mat = cv::imread("/DATA/disk0/zkh/project/tests/dataset/Difficult-Multi-Text_Chart-Text+Chart_003.png", cv::IMREAD_COLOR);
-            //src_mat = cv::imread("/DATA/disk0/zkh/project/tests/dataset/Difficult-Single-Text-Text_001.png", cv::IMREAD_COLOR);
+            //src_mat = cv::imread("/DATA/disk0/zkh/project/tests/dataset/Difficult-Multi-Text_Chart-Text+Chart_003.png", cv::IMREAD_COLOR);
+            //src_mat = cv::imread("/DATA/disk0/zkh/project/tests/dataset/Difficult-Single-Chart-Histogram_003.png", cv::IMREAD_COLOR);
+            src_mat = cv::imread("/DATA/disk0/zkh/project/tests/dataset/Easy-Multi-Chart_Chart-Chart+Chart_002.jpg", cv::IMREAD_COLOR);
+            cv::cvtColor(src_mat, src_mat, cv::COLOR_BGR2RGB);
+            for(int y = 0; y < src_mat.rows; y++){
+                for(int x = 0; x < src_mat.cols; x++){
+                    cv::Vec3b& pixel = src_mat.at<cv::Vec3b>(y, x);
+                    if(y < 10 && x < 10)
+                        std::cout << (int)pixel[0] << " " << (int)pixel[1] << " " << (int)pixel[2] << ", ";
+            
+                    fprintf(fp_src, "%d, %d, %d\n", (int)pixel[0], (int)pixel[1], (int)pixel[2]);
+                }
+                if(y < 10)
+                    std::cout << std::endl;
+            }
+        }
+        
+        fclose(fp_src);
+
+        cv::Mat dst_mat = PillowResize::resize(src_mat, cv::Size(target_width, target_height), PillowResize::InterpolationMethods::INTERPOLATION_BICUBIC);
+        
+        for(int i = 0; i < dst_mat.rows; i++){
+            uint8_t *ptr = dst_mat.ptr<uint8_t>(i);
+            memcpy(dst.buf.data() + i * dst_mat.cols * 3, ptr, dst_mat.cols * 3);
+            for(int j = 0; j < dst_mat.cols; j++){
+                fprintf(fp_resize, "%d, %d, %d\n", (int)ptr[j * 3 + 0], (int)ptr[j * 3 + 1], (int)ptr[j * 3 + 2]);
+            }
+        }
+        fclose(fp_resize);
+    }
+    
+    return true;
+}
+
+static bool bicubic_resize(cv::Mat &src_mat, clip_image_u8 &dst, int target_width, int target_height) {
+    const int nx = src_mat.cols;//img.nx;
+    const int ny = src_mat.rows;//img.ny;
+
+    dst.nx = target_width;
+    dst.ny = target_height;
+    dst.buf.resize(3 * target_width * target_height);
+
+    if(0){
+    }else{//use pillow resize
+        //cv::Mat src_mat = img;//cv::Mat::zeros(img.ny, img.nx, CV_8UC3);
+        FILE *fp_src = fopen("src.txt", "w");
+        FILE *fp_resize = fopen("resize.txt", "w");
+        if(false){          
+        }else{
+            //src_mat = cv::imread("D:\\project\\minicpmv2.7\\Archive\\6.png", cv::IMREAD_COLOR);
+            //src_mat = cv::imread("D:\\project\\OpenCV\\b.jpg", cv::IMREAD_COLOR);
+            //src_mat = cv::imread("/DATA/disk0/zkh/project/tests/bad.png", cv::IMREAD_COLOR);
+            //src_mat = cv::imread("/DATA/disk0/zkh/project/tests/dataset/Difficult-Multi-Text_Chart-Text+Chart_003.png", cv::IMREAD_COLOR);
+            //src_mat = cv::imread("/DATA/disk0/zkh/project/tests/dataset/Difficult-Single-Chart-Histogram_003.png", cv::IMREAD_COLOR);
+            //src_mat = cv::imread("/DATA/disk0/zkh/project/tests/dataset/Easy-Multi-Chart_Chart-Chart+Chart_002.jpg", cv::IMREAD_COLOR);
             cv::cvtColor(src_mat, src_mat, cv::COLOR_BGR2RGB);
             for(int y = 0; y < src_mat.rows; y++){
                 for(int x = 0; x < src_mat.cols; x++){
@@ -2015,6 +2067,75 @@ static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(const clip_imag
     return images;
 }
 
+static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(cv::Mat& img, const int max_slice_nums=9, const int scale_resolution=448, const int patch_size=14) {
+    const std::pair<int, int> original_size={img.cols,img.rows};
+    const int original_width = img.cols; //img->nx;
+    const int original_height = img.rows; //img->ny;
+    const float log_ratio = log(1.0*original_width/original_height);
+    const float ratio = 1.0 * original_width * original_height/ (scale_resolution * scale_resolution);
+    const int multiple = fmin(ceil(ratio), max_slice_nums);
+
+    std::vector<std::vector<clip_image_u8 *>> images;
+    LOG_TEE("%s: multiple %d\n", __func__, multiple);
+    images.push_back(std::vector<clip_image_u8 *>());
+
+    if (multiple <= 1) {
+        auto best_size = uhd_find_best_resize(original_size, scale_resolution, patch_size, true);
+        clip_image_u8 * source_image = clip_image_u8_init();
+        bicubic_resize(img, *source_image, best_size.first, best_size.second);
+        // source_image = image.resize(best_size, Image.Resampling.BICUBIC)
+        images[images.size()-1].push_back(source_image);
+    }
+    else if (multiple > 1) {
+        auto best_size = uhd_find_best_resize(original_size, scale_resolution, patch_size);
+        clip_image_u8 * source_image = clip_image_u8_init();
+        //printf("====img shape : %d %d\n", img->ny, img->nx);
+        bicubic_resize(img, *source_image, best_size.first, best_size.second);
+        //printf("====resize img shape : %d %d, %d %d\n", source_image->ny, source_image->nx, best_size.first, best_size.second);
+        //exit(0);
+        // source_image = image.copy().resize(best_resize, Image.Resampling.BICUBIC)
+        LOG_TEE("%s: image_size: %d %d; source_image size: %d %d\n", __func__, img.cols, img.rows, best_size.first, best_size.second);
+        images[images.size()-1].push_back(source_image);
+
+        std::pair<int, int> best_grid = uhd_best_grid(max_slice_nums, multiple, log_ratio);
+        LOG_TEE("%s: image_size: %d %d; best_grid: %d %d\n", __func__, img.cols, img.rows, best_grid.first, best_grid.second);
+
+        auto refine_size = uhd_get_refine_size(original_size, best_grid, scale_resolution, patch_size, true);
+        clip_image_u8 * refine_image = clip_image_u8_init();
+        bicubic_resize(img, *refine_image, refine_size.first, refine_size.second);
+
+        LOG_TEE("%s: refine_image_size: %d %d; refine_size: %d %d\n", __func__, refine_image->nx, refine_image->ny, refine_size.first, refine_size.second);
+
+        // split_to_patches
+        int width = refine_image->nx;
+        int height = refine_image->ny;
+        int grid_x = int(width / best_grid.first);
+        int grid_y = int(height / best_grid.second);
+        for (int patches_i = 0, ic = 0; patches_i < height && ic < best_grid.second; patches_i += grid_y, ic += 1){
+            images.push_back(std::vector<clip_image_u8 *>());
+            for(int patches_j = 0, jc = 0; patches_j < width && jc < best_grid.first; patches_j += grid_x, jc += 1){
+                clip_image_u8 * patch = clip_image_u8_init();
+                patch->nx = grid_x;
+                patch->ny = grid_y;
+                patch->buf.resize(3 * patch->nx * patch->ny);
+                for (int y = patches_i; y < patches_i + grid_y; ++y) {
+                    for (int x = patches_j; x < patches_j + grid_x; ++x) {
+                        const int i = 3 * (y * refine_image->nx + x);
+                        const int j = 3 * ((y-patches_i) * patch->nx + (x-patches_j));
+                        patch->buf[j]   = refine_image->buf[i];
+                        patch->buf[j+1] = refine_image->buf[i+1];
+                        patch->buf[j+2] = refine_image->buf[i+2];
+                    }
+                }
+                images[images.size()-1].push_back(patch);
+            }
+        }
+        delete refine_image;
+    }
+    return images;
+}
+
+
 int clip_uhd_num_image_embeds_col(struct clip_ctx * ctx_clip){
     const int max_slice_nums=ctx_clip->max_slice_nums;
     const int scale_resolution=448;
@@ -2030,7 +2151,6 @@ int clip_uhd_num_image_embeds_col(struct clip_ctx * ctx_clip){
 // returns the normalized float tensor for llava-1.5, for spatial_unpad with anyres processing for llava-1.6 it returns the normalized image patch tensors as a vector
 // res_imgs memory is being allocated here, previous allocations will be freed if found
 bool clip_image_preprocess(struct clip_ctx * ctx, const clip_image_u8 * img, clip_image_f32_batch * res_imgs) {
-
     if(clip_is_minicpmv(ctx)){
         if (ctx->minicpmv_version >1)
         {
@@ -2253,6 +2373,235 @@ bool clip_image_preprocess(struct clip_ctx * ctx, const clip_image_u8 * img, cli
     res_imgs->data = new clip_image_f32[res_imgs->size];
     res_imgs->data[0] = *res;
     clip_image_f32_free(res);
+
+    return true;
+}
+bool clip_mat_preprocess(struct clip_ctx * ctx, cv::Mat& img, clip_image_f32_batch * res_imgs) {
+
+    if(clip_is_minicpmv(ctx)){
+        if (ctx->minicpmv_version >1)
+        {
+            std::vector<std::vector<clip_image_u8 *>> imgs = uhd_slice_image(img, ctx->max_slice_nums);
+            res_imgs->size = 0;
+            for (size_t i = 0; i < imgs.size(); ++i){
+                res_imgs->size += imgs[i].size();
+            }
+            res_imgs->data = new clip_image_f32[res_imgs->size];
+            int idx = 0;
+            for (size_t i = 0; i < imgs.size(); ++i){
+                for (size_t j = 0; j < imgs[i].size(); ++j) {
+                    LOG_TEE("%s: %d %d\n", __func__,imgs[i][j]->nx,imgs[i][j]->ny);
+                    clip_image_f32 * res = clip_image_f32_init();
+                    normalize_image_u8_to_f32(imgs[i][j], res, ctx->image_mean, ctx->image_std);
+                    res_imgs->data[idx++] = *res;
+                    clip_image_f32_free(res);
+                }
+            }
+            for (size_t i = 0; i < imgs.size(); ++i){
+                for (size_t j = 0; j < imgs[i].size(); ++j) {
+                    if (imgs[i][j] != nullptr) {
+                        imgs[i][j]->buf.clear();
+                        delete imgs[i][j];
+                    }
+                }
+                imgs[i].clear();
+            }
+            imgs.clear();
+            return true;
+        }
+        else {
+            if (res_imgs->size == 0){
+                std::vector<std::vector<clip_image_u8 *>> imgs = uhd_slice_image(img, ctx->max_slice_nums);
+                res_imgs->size = 0;
+                for (size_t i = 0; i < imgs.size(); ++i){
+                    res_imgs->size += imgs[i].size();
+                }
+                res_imgs->data = new clip_image_f32[res_imgs->size];
+                int idx = 0;
+
+                for (size_t i = 0; i < imgs.size(); ++i){
+                    for (size_t j = 0; j < imgs[i].size(); ++j) {
+                        LOG_TEE("%s: %d %d\n", __func__,imgs[i][j]->nx,imgs[i][j]->ny);
+                        clip_image_f32_batch img_res_v_batch;
+                        img_res_v_batch.size = 1;
+                        img_res_v_batch.data = nullptr;
+                        clip_image_preprocess(ctx, imgs[i][j], &img_res_v_batch);
+                        res_imgs->data[idx++] = img_res_v_batch.data[0];
+                    }
+                }
+                return true;
+           }
+        }
+    }
+#if 0
+    
+    bool pad_to_square = true;
+    if (!ctx->has_vision_encoder) {
+        LOG_TEE("This gguf file seems to have no vision encoder\n");
+        return false;
+    }
+    auto & params = ctx->vision_model.hparams;
+    // The model config actually contains all we need to decide on how to preprocess, here we automatically switch to the new llava-1.6 preprocessing
+    if (strcmp(params.mm_patch_merge_type, "spatial_unpad") == 0) {
+        pad_to_square = false;
+    }
+    // free the previous res_imgs if any set
+    if (res_imgs->size > 0) {
+        clip_image_f32_batch_free(res_imgs);
+    }
+    res_imgs->data = nullptr;
+    res_imgs->size = 0;
+
+    // the logic below is to pad the shorter side to the longer side with a background color: rgb(122, 116, 104)
+    // see https://github.com/haotian-liu/LLaVA/blob/e854a2bf85118c504f6f16bf5c3c7c92f8fa8c6b/llava/conversation.py#L113-L156
+
+    clip_image_u8 * temp = clip_image_u8_init(); // we will keep the input image data here temporarily
+    if (pad_to_square && img->nx != img->ny) {
+        int longer_side = std::max(img->nx, img->ny);
+        temp->nx = longer_side;
+        temp->ny = longer_side;
+        temp->buf.resize(3 * longer_side * longer_side);
+        const uint8_t bc[3] = {122, 116, 104}; // background color in RGB from LLaVA (this is the mean rgb color * 255)
+
+        // fill with background color
+        for (size_t i = 0; i < temp->buf.size(); i++) {
+            temp->buf[i] = bc[i % 3];
+        }
+
+        // copy from the input image
+        for (int y = 0; y < img->ny; y++) {
+            for (int x = 0; x < img->nx; x++) {
+                const int i = 3 * (y * img->nx + x);
+                const int j = 3 * (y * temp->nx + x);
+                temp->buf[j]   = img->buf[i];
+                temp->buf[j+1] = img->buf[i+1];
+                temp->buf[j+2] = img->buf[i+2];
+            }
+        }
+    } else {
+        if (params.image_grid_pinpoints[0] != 0) {
+            // "spatial_unpad" with "anyres" processing for llava-1.6
+            std::vector<std::pair<int, int>> possible_resolutions;
+            for (int i = 0; i < 32 && params.image_grid_pinpoints[i] != 0; i+=2) {
+                possible_resolutions.push_back({params.image_grid_pinpoints[i], params.image_grid_pinpoints[i+1]});
+            }
+            std::pair<int, int> best_resolution = select_best_resolution({img->nx, img->ny}, possible_resolutions);
+            // clip_image_save_to_bmp(*img, "input.bmp");
+            resize_and_pad_image(*img, *temp, best_resolution);  // we do not pad with mean-bg color anymore in llava-1.6
+            // clip_image_save_to_bmp(*temp, "resized.bmp");
+            // visually verify normalized image:
+            // normalize_image_u8_to_f32(*temp, *res, ctx->image_mean, ctx->image_std);
+            // {
+            //     clip_image_u8 * temp2 = clip_image_u8_init();
+            //     clip_image_convert_f32_to_u8(*res, *temp2);
+            //     clip_image_save_to_bmp(*temp2, "resized_normalized_f32.bmp");
+            //     clip_image_u8_free(temp2);
+            // }
+
+            std::vector<clip_image_u8 *> patches = divide_to_patches_u8(*temp, params.image_size); // prepare spatial sorted main patches of image_size each (336 in llava-1.6)
+
+            clip_image_u8 *image_original_resize = clip_image_u8_init();
+            // bilinear_resize(*img, *image_original_resize, params.image_size, params.image_size); // in python this is "shortest_edge", but all CLIP are square
+            bicubic_resize(*img, *image_original_resize, params.image_size, params.image_size); // in python this is "shortest_edge", but all CLIP are square
+            patches.insert(patches.begin(), image_original_resize);
+            // clip_image_f32_batch_init(patches.size());
+            res_imgs->size = patches.size();
+            res_imgs->data = new clip_image_f32[res_imgs->size];
+            int num=0;
+            for (auto& patch : patches) {
+                normalize_image_u8_to_f32(patch, &res_imgs->data[num], ctx->image_mean, ctx->image_std);
+                num++;
+            }
+
+            for (size_t i = 0; i < patches.size(); i++) {
+                // LOG_TEE("patch %d: %d %d\n", i, patches[i]->nx, patches[i]->ny);
+                clip_image_u8_free(patches[i]);
+            }
+
+            clip_image_u8_free(temp);
+
+            return true;
+        } else {
+            temp->nx = img->nx;
+            temp->ny = img->ny;
+            temp->buf.resize(img->buf.size());
+            memcpy(temp->buf.data(), img->buf.data(), temp->buf.size());
+        }
+    }
+
+    const int nx = temp->nx;
+    const int ny = temp->ny;
+    // clip_image_save_to_bmp(*temp, "resized_vanilla.bmp");
+
+    const int nx2 = ctx->vision_model.hparams.image_size;
+    const int ny2 = ctx->vision_model.hparams.image_size;
+    clip_image_f32 * res = clip_image_f32_init();
+    res->nx = nx2;
+    res->ny = ny2;
+    res->buf.resize(3 * nx2 * ny2);
+
+    const float scale = std::max(nx, ny) / (float)ctx->vision_model.hparams.image_size;
+
+    const int nx3 = int(nx / scale + 0.5f);
+    const int ny3 = int(ny / scale + 0.5f);
+
+    const auto & m3 = ctx->image_mean; // {0.48145466f, 0.4578275f, 0.40821073f};
+    const auto & s3 = ctx->image_std;  // {0.26862954f, 0.26130258f, 0.27577711f};
+
+    for (int y = 0; y < ny3; y++) {
+        for (int x = 0; x < nx3; x++) {
+            for (int c = 0; c < 3; c++) {
+                // linear interpolation
+                const float sx = (x + 0.5f) * scale - 0.5f;
+                const float sy = (y + 0.5f) * scale - 0.5f;
+
+                const int x0 = std::max(0, (int)std::floor(sx));
+                const int y0 = std::max(0, (int)std::floor(sy));
+
+                const int x1 = std::min(x0 + 1, nx - 1);
+                const int y1 = std::min(y0 + 1, ny - 1);
+
+                const float dx = sx - x0;
+                const float dy = sy - y0;
+
+                const int j00 = 3 * (y0 * nx + x0) + c;
+                const int j01 = 3 * (y0 * nx + x1) + c;
+                const int j10 = 3 * (y1 * nx + x0) + c;
+                const int j11 = 3 * (y1 * nx + x1) + c;
+
+                const float v00 = temp->buf[j00];
+                const float v01 = temp->buf[j01];
+                const float v10 = temp->buf[j10];
+                const float v11 = temp->buf[j11];
+
+                const float v0 = v00 * (1.0f - dx) + v01 * dx;
+                const float v1 = v10 * (1.0f - dx) + v11 * dx;
+
+                const float v = v0 * (1.0f - dy) + v1 * dy;
+
+                const uint8_t v2 = std::min(std::max(std::round(v), 0.0f), 255.0f);
+
+                const int i = 3 * (y * nx3 + x) + c;
+
+                res->buf[i] = ((float(v2) / 255.0f) - m3[c]) / s3[c];
+            }
+        }
+    }
+    clip_image_u8_free(temp);
+
+    // {
+    //     clip_image_u8 * temp2 = clip_image_u8_init();
+    //     clip_image_convert_f32_to_u8(*res, *temp2);
+    //     clip_image_save_to_bmp(*temp2, "resized_normalized_f32_vanilla.bmp");
+    //     clip_image_u8_free(temp2);
+    // }
+    // res_imgs.push_back(res);
+
+    res_imgs->size = 1;
+    res_imgs->data = new clip_image_f32[res_imgs->size];
+    res_imgs->data[0] = *res;
+    clip_image_f32_free(res);
+#endif
 
     return true;
 }
