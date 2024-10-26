@@ -253,7 +253,7 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
     LOG_TEE("%s: image token past: %d\n", __func__, n_past);
 
     //std::string fname = "D:\\project\\minivpm-v-lenovo31-v3-sft\\model_skip\\sp.raw";
-    std::string fname = "/DATA/disk0/zkh/job_838808_ckpt_800/model_skip/sp.raw";
+    std::string fname = "/DATA/disk0/zkh/job_839830_ckpt_1200/model_skip/sp.raw";
     auto file = fopen(fname.c_str(), "rb");
     if (file == NULL) {
         LOG_TEE("%s: can't read file %s\n", __func__, fname.c_str());
