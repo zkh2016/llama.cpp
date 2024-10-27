@@ -486,8 +486,8 @@ static bool load_file_to_bytes(const char* path, unsigned char** bytesOut, long 
 }
 
 struct llava_image_embed * llava_image_embed_make_with_filename(struct clip_ctx * ctx_clip, int n_threads, const char * image_path) {
-    unsigned char* image_bytes;
-    long image_bytes_length;
+    //unsigned char* image_bytes;
+    //long image_bytes_length;
     //auto loaded = load_file_to_bytes(image_path, &image_bytes, &image_bytes_length);
     //if (!loaded) {
     //    LOG_TEE("%s: failed to load %s\n", __func__, image_path);
@@ -496,7 +496,7 @@ struct llava_image_embed * llava_image_embed_make_with_filename(struct clip_ctx 
     auto src_mat = cv::imread(image_path, cv::IMREAD_COLOR);
 
     llava_image_embed *embed = llava_image_embed_make_with_bytes(ctx_clip, n_threads, src_mat);
-    free(image_bytes);
+    //free(image_bytes);
 
     return embed;
 }
