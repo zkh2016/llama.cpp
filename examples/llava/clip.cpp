@@ -1924,8 +1924,16 @@ static std::vector<clip_image_u8*> divide_to_patches_u8(const clip_image_u8 & im
     return patches;
 }
 
+int py_round(float f){
+   int i = (int)f;
+   if(i % 2 == 0 && ((f - i) * 10) == 5.0){
+        return i;
+   }
+   return std::round(f);
+}
+
 static int ensure_divide(int length, int patch_size) {
-    return std::max(static_cast<int>(std::round(static_cast<float>(length) / patch_size) * patch_size), patch_size);
+    return std::max(static_cast<int>(py_round(static_cast<float>(length) / patch_size) * patch_size), patch_size);
 }
 
 static std::pair<int, int> uhd_find_best_resize(std::pair<int, int> original_size, int scale_resolution, int patch_size, bool allow_upscale = false) {
@@ -2013,6 +2021,7 @@ static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(const clip_imag
 
     if (multiple <= 1) {
         auto best_size = uhd_find_best_resize(original_size, scale_resolution, patch_size, true);
+        printf("best_size = %d %d\n", best_size.first, best_size.second);
         clip_image_u8 * source_image = clip_image_u8_init();
         bicubic_resize(*img, *source_image, best_size.first, best_size.second);
         // source_image = image.resize(best_size, Image.Resampling.BICUBIC)
@@ -2020,6 +2029,7 @@ static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(const clip_imag
     }
     else if (multiple > 1) {
         auto best_size = uhd_find_best_resize(original_size, scale_resolution, patch_size);
+        printf("best_size = %d %d\n", best_size.first, best_size.second);
         clip_image_u8 * source_image = clip_image_u8_init();
         printf("====img shape : %d %d\n", img->ny, img->nx);
         bicubic_resize(*img, *source_image, best_size.first, best_size.second);
@@ -2033,6 +2043,8 @@ static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(const clip_imag
         LOG_TEE("%s: image_size: %d %d; best_grid: %d %d\n", __func__, img->nx, img->ny, best_grid.first, best_grid.second);
 
         auto refine_size = uhd_get_refine_size(original_size, best_grid, scale_resolution, patch_size, true);
+        printf("original_size = %d %d\n", original_size.first, original_size.second);
+        printf("refine_size = %d %d\n", refine_size.first, refine_size.second);
         clip_image_u8 * refine_image = clip_image_u8_init();
         bicubic_resize(*img, *refine_image, refine_size.first, refine_size.second);
 
@@ -2081,6 +2093,7 @@ static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(cv::Mat& img, c
 
     if (multiple <= 1) {
         auto best_size = uhd_find_best_resize(original_size, scale_resolution, patch_size, true);
+        printf("best_size = %d %d\n", best_size.first, best_size.second);
         clip_image_u8 * source_image = clip_image_u8_init();
         bicubic_resize(img, *source_image, best_size.first, best_size.second);
         // source_image = image.resize(best_size, Image.Resampling.BICUBIC)
@@ -2088,6 +2101,7 @@ static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(cv::Mat& img, c
     }
     else if (multiple > 1) {
         auto best_size = uhd_find_best_resize(original_size, scale_resolution, patch_size);
+        printf("best_size = %d %d\n", best_size.first, best_size.second);
         clip_image_u8 * source_image = clip_image_u8_init();
         //printf("====img shape : %d %d\n", img->ny, img->nx);
         bicubic_resize(img, *source_image, best_size.first, best_size.second);
@@ -2095,6 +2109,7 @@ static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(cv::Mat& img, c
         //exit(0);
         // source_image = image.copy().resize(best_resize, Image.Resampling.BICUBIC)
         LOG_TEE("%s: image_size: %d %d; source_image size: %d %d\n", __func__, img.cols, img.rows, best_size.first, best_size.second);
+        printf("source_image.shape = %d %d\n", source_image->nx, source_image->ny);
         images[images.size()-1].push_back(source_image);
 
         std::pair<int, int> best_grid = uhd_best_grid(max_slice_nums, multiple, log_ratio);
@@ -2865,8 +2880,11 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
             //    -> https://huggingface.co/HuggingFaceM4/siglip-so400m-14-980-flash-attn2-navit/blob/d66538faeba44480d0bfaa42145eef26f9423199/modeling_siglip.py#L316
             struct ggml_tensor * positions = ggml_graph_get_tensor(gf, "positions");
             int* positions_data = (int*)malloc(ggml_nbytes(positions));
-            int bucket_coords_h[70];
-            int bucket_coords_w[70];
+
+            //int bucket_coords_h[70];
+            //int bucket_coords_w[70];
+            std::vector<int> bucket_coords_h(pos_h);
+            std::vector<int> bucket_coords_w(pos_w);
             for (int i = 0; i < pos_h; i++){
                 bucket_coords_h[i] = std::floor(70.0*i/pos_h);
             }
@@ -2879,11 +2897,11 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
                     positions_data[id++] = bucket_coords_h[i]*70 + bucket_coords_w[j];
                 }
             }
-            // printf("positions_data %d:\n", id);
-            // for(int i = 0; i < id; i++){
-            //     //printf("%d ", positions_data[i]);
-            // }
-            // printf("\n");
+            //printf("positions_data %d:\n", id);
+            //for(int i = 0; i < id; i++){
+            //    printf("%d ", positions_data[i]);
+            //}
+            //printf("\n");
             ggml_backend_tensor_set(positions, positions_data, 0, ggml_nbytes(positions));
             free(positions_data);
         }
