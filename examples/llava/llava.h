@@ -2,6 +2,8 @@
 #define LLAVA_H
 
 #include "ggml.h"
+#include "llama.h"
+#include <iostream>
 
 #ifdef LLAMA_SHARED
 #    if defined(_WIN32) && !defined(__MINGW32__)
@@ -26,6 +28,7 @@ struct llava_image_embed {
     float * embed;
     int n_image_pos;
 };
+
 
 /** sanity check for clip <-> llava embed size match */
 LLAVA_API bool llava_validate_embed_size(const struct llama_context * ctx_llama, const struct clip_ctx * ctx_clip);

@@ -15,6 +15,8 @@ var sources = [
     "ggml/src/ggml-backend.cpp",
     "ggml/src/ggml-quants.c",
     "ggml/src/ggml-aarch64.c",
+    "examples/llava/clip.cpp",
+    "examples/llava/llava.cpp"
 ]
 
 var resources: [Resource] = []
@@ -62,7 +64,7 @@ let package = Package(
             path: ".",
             exclude: [
                "cmake",
-               "examples",
+               //"examples",
                "scripts",
                "models",
                "tests",
@@ -73,6 +75,9 @@ let package = Package(
             resources: resources,
             publicHeadersPath: "spm-headers",
             cSettings: cSettings,
+            cxxSettings: [
+                .headerSearchPath("common")
+            ],
             linkerSettings: linkerSettings
         )
     ],

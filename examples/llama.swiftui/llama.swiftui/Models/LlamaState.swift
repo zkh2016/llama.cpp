@@ -1,4 +1,11 @@
 import Foundation
+import CoreML
+import SwiftUI
+
+var sharedQueue: [String] = []
+let queueCapacity = 7 * 8
+         // 用于保护队列的访问
+
 
 struct Model: Identifiable {
     var id = UUID()
@@ -8,6 +15,144 @@ struct Model: Identifiable {
     var status: String?
 }
 
+class ConditionalChatTTS: ObservableObject {
+    @Published var messageLog = ""
+    private var TTSContext: LlamaContext?
+    let NS_PER_S = 1_000_000_000.0
+
+    init(){
+        //self.messageLog = messageLog
+        var ttsUrl: URL? {
+            Bundle.main.url(forResource: "tts-ggml-model-Q4_0", withExtension: "gguf", subdirectory: "models")
+        }
+
+        if let ttsUrl {
+            self.messageLog += "Loading tts model...\n"
+            do {
+                TTSContext = try LlamaContext.create_context(path: ttsUrl.path(), use_metal: false)
+            }catch {
+                self.messageLog += "Loaded tts model \(ttsUrl.lastPathComponent) failed\n"
+            }
+            self.messageLog += "Loaded tts model \(ttsUrl.lastPathComponent)\n"
+
+            // Assuming that the model is successfully loaded, update the downloaded models
+        } else {
+            self.messageLog += "tts model not found: \(ttsUrl?.path())\n"
+        }
+    }
+    func forward(){
+        
+    }
+    func prepare_inputs_embeds(){
+        
+    }
+    func prefill_text(
+        input_ids:[Int],
+        position_ids: [Int]
+    ){
+        
+    }
+    func generate(){
+    
+    }
+    
+    func consumer() {
+        guard let TTSContext else {
+            return
+        }
+        
+        var generate_str = ""
+        var generate_cnt = 0
+        Task.detached {[weak self] in
+            guard let self = self else { return }
+            while sharedQueue.isEmpty {
+                await Task.yield()
+            }
+            let input_str = sharedQueue.removeFirst()
+            await TTSContext.completion_init(text: input_str)
+            
+            while await !TTSContext.is_done {
+                let result = await TTSContext.completion_loop(no_stop:true)
+                generate_str += result
+                generate_cnt += 1
+                if(generate_cnt == 50){
+                    break
+                }
+            }
+            
+        }
+    }
+    
+    func only_generate_by_str(text: String) async -> String {
+        guard let TTSContext else {
+            return ""
+        }
+        var input_str = text
+        await TTSContext.completion_init(text: input_str)
+        var generate_str = ""
+        var generate_cnt = 0
+        while await !TTSContext.is_done {
+            let result = await TTSContext.completion_loop(no_stop:true)
+            generate_str += result
+            generate_cnt += 1
+            if(generate_cnt == 50){
+                break
+            }
+        }
+        return generate_str
+    }
+    
+    func generate_by_str(text: String, stream: Bool = true) async {
+        guard let TTSContext else {
+            return
+        }
+        self.messageLog += text
+        var input_str = "[Sbreak]\(text)[Pbreak][oral_2][laugh_0][break_4]"
+        var generate_cnt = 0
+        var generate_str = ""
+        
+        let t_start = DispatchTime.now().uptimeNanoseconds
+        await TTSContext.completion_init(text: input_str)
+        let t_heat_end = DispatchTime.now().uptimeNanoseconds
+        let t_heat = Double(t_heat_end - t_start) / NS_PER_S
+        
+        while await !TTSContext.is_done {
+            let result = await TTSContext.completion_loop()
+            if(stream){
+                await MainActor.run {
+                    self.messageLog += "\(result)"
+                    generate_cnt += 1
+                }
+            }else{
+                generate_str += result
+                generate_cnt += 1
+            }
+        }
+            
+        let t_end = DispatchTime.now().uptimeNanoseconds
+        let t_generation = Double(t_end - t_heat_end) / self.NS_PER_S
+        let tokens_per_second = Double(generate_cnt) / t_generation
+        
+        await TTSContext.clear()
+        
+        if(!stream){
+            self.messageLog += generate_str
+        }
+        await MainActor.run {
+            self.messageLog += """
+                \n
+                Done
+                Heat up took \(t_heat)s
+                Generated \(generate_cnt)t/\(t_generation)s, \(tokens_per_second) t/s\n\n
+                """
+        }
+    }
+    
+    func decode_to_mel_specs(){
+        
+    }
+}
+
 @MainActor
 class LlamaState: ObservableObject {
     @Published var messageLog = ""
@@ -15,16 +160,33 @@ class LlamaState: ObservableObject {
     @Published var downloadedModels: [Model] = []
     @Published var undownloadedModels: [Model] = []
     let NS_PER_S = 1_000_000_000.0
+    var model: MLModel?
 
     private var llamaContext: LlamaContext?
+//    private var TTSContext: LlamaContext?
+    //var tts : ConditionalChatTTS?
+
     private var defaultModelUrl: URL? {
-        Bundle.main.url(forResource: "ggml-model", withExtension: "gguf", subdirectory: "models")
+       // Bundle.main.url(forResource: "Model-4.1B-Q4_0", withExtension: "gguf", subdirectory: "models")
+        Bundle.main.url(forResource: "qwen2.5-7b-instruct-q4_0", withExtension: "gguf", subdirectory: "models")
         // Bundle.main.url(forResource: "llama-2-7b-chat", withExtension: "Q2_K.gguf", subdirectory: "models")
     }
+//    private var defaultTTSModelUrl: URL? {
+//        Bundle.main.url(forResource: "tts-ggml-model-Q4_0", withExtension: "gguf", subdirectory: "models")
+//        // Bundle.main.url(forResource: "llama-2-7b-chat", withExtension: "Q2_K.gguf", subdirectory: "models")
+//    }
 
     init() {
+//        guard let modelURL = Bundle.main.url(forResource: "ane_minicpmo_audio_f32_b1", withExtension: "mlmodelc", subdirectory: "models"),
+//              let coreMLModel = try? MLModel(contentsOf: modelURL) else {
+//                    fatalError("Failed to load model")
+//              }
+//        self.model = coreMLModel
+//        print("load audio model success")
+        
         loadModelsFromDisk()
         loadDefaultModels()
+        //tts = ConditionalChatTTS()
     }
 
     private func loadModelsFromDisk() {
@@ -104,6 +266,7 @@ class LlamaState: ObservableObject {
         if let modelUrl {
             messageLog += "Loading model...\n"
             llamaContext = try LlamaContext.create_context(path: modelUrl.path())
+            
             messageLog += "Loaded model \(modelUrl.lastPathComponent)\n"
 
             // Assuming that the model is successfully loaded, update the downloaded models
@@ -111,6 +274,17 @@ class LlamaState: ObservableObject {
         } else {
             messageLog += "Load a model from the list below\n"
         }
+        
+//        if let ttsUrl {
+//            messageLog += "Loading tts model...\n"
+//            TTSContext = try LlamaContext.create_context(path: ttsUrl.path())
+//            messageLog += "Loaded tts model \(ttsUrl.lastPathComponent)\n"
+//
+//            // Assuming that the model is successfully loaded, update the downloaded models
+//            updateDownloadedModels(modelName: ttsUrl.lastPathComponent, status: "downloaded")
+//        } else {
+//            messageLog += "Load a model from the list below\n"
+//        }
     }
 
 
@@ -118,42 +292,62 @@ class LlamaState: ObservableObject {
         undownloadedModels.removeAll { $0.name == modelName }
     }
 
-
-    func complete(text: String) async {
+    func complete(text: String, stream: Bool=true) async -> String {
         guard let llamaContext else {
-            return
+            return ""
         }
-
+        messageLog += text
+        var input_str = "<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
+        var generate_str = ""
+        var generate_cnt = 0
+        
         let t_start = DispatchTime.now().uptimeNanoseconds
-        await llamaContext.completion_init(text: text)
+        await llamaContext.completion_init(text: input_str)
         let t_heat_end = DispatchTime.now().uptimeNanoseconds
         let t_heat = Double(t_heat_end - t_start) / NS_PER_S
 
-        messageLog += "\(text)"
-
-        Task.detached {
+        //Task.detached {
             while await !llamaContext.is_done {
                 let result = await llamaContext.completion_loop()
-                await MainActor.run {
-                    self.messageLog += "\(result)"
+                if(stream){
+                    await MainActor.run {
+                        self.messageLog += "\(result)"
+                        generate_str += "\(result)"
+                        generate_cnt += 1
+                    }
+                }else{
+                    generate_str += result
+                    generate_cnt += 1
                 }
+//
             }
 
             let t_end = DispatchTime.now().uptimeNanoseconds
             let t_generation = Double(t_end - t_heat_end) / self.NS_PER_S
-            let tokens_per_second = Double(await llamaContext.n_len) / t_generation
+            //let tokens_per_second = Double(await llamaContext.n_len) / t_generation
+            let tokens_per_second = Double(generate_cnt) / t_generation
 
             await llamaContext.clear()
-
+        if(!stream){
+            self.messageLog += generate_str
+        }
             await MainActor.run {
                 self.messageLog += """
                     \n
                     Done
                     Heat up took \(t_heat)s
-                    Generated \(tokens_per_second) t/s\n
+                    Generated \(generate_cnt)t/\(t_generation)s, \(tokens_per_second) t/s\n\n
                     """
             }
-        }
+            //return generate_str
+        //}
+        
+        return generate_str
+//        await completeTTS(text: "[Sbreak]" + generate_str + "[Pbreak][oral_2][laugh_0][break_4]")
+//        await self.tts?.generate_by_str(text: "[Sbreak]" + generate_str + "[Pbreak][oral_2][laugh_0][break_4]")
+//        await MainActor.run {
+//            self.messageLog += self.tts?.messageLog ?? ""
+//        }
     }
 
     func bench() async {

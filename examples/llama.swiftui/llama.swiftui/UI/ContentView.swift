@@ -1,7 +1,10 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject var llamaState = LlamaState()
+//    @StateObject var llamaState = LlamaState()
+//    @StateObject var ttsState  = ConditionalChatTTS()
+    @StateObject var llamaState = Benchmark()
+
     @State private var multiLineText = ""
     @State private var showingHelp = false    // To track if Help Sheet should be shown
 
@@ -9,7 +12,8 @@ struct ContentView: View {
         NavigationView {
             VStack {
                 ScrollView(.vertical, showsIndicators: true) {
-                    Text(llamaState.messageLog)
+                    //Text("\(llamaState.messageLog) \(ttsState.messageLog)")
+                    Text("\(llamaState.messageLog)")
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
@@ -24,11 +28,17 @@ struct ContentView: View {
                     .border(Color.gray, width: 0.5)
 
                 HStack {
-                    Button("Send") {
+                    Button("TestLLM") {
                         sendText()
                     }
+                    Button("TestLLMStream") {
+                        sendTextStream()
+                    }
 
-                    Button("Bench") {
+                    Button("TestTTS") {
+                        test_tts()
+                    }
+                    Button("bench") {
                         bench()
                     }
 
@@ -43,9 +53,9 @@ struct ContentView: View {
                 .buttonStyle(.bordered)
                 .padding()
 
-                NavigationLink(destination: DrawerView(llamaState: llamaState)) {
-                    Text("View Models")
-                }
+//                NavigationLink(destination: DrawerView(llamaState: llamaState)) {
+//                    Text("View Models")
+//                }
                 .padding()
 
             }
@@ -56,15 +66,39 @@ struct ContentView: View {
     }
 
     func sendText() {
+        
         Task {
-            await llamaState.complete(text: multiLineText)
+            var prompt = multiLineText
             multiLineText = ""
+            let generate_str = await llamaState.complete(text: prompt, stream: false)
+            //multiLineText = ""
+            //await ttsState.generate_by_str(text: generate_str, stream: false)
         }
     }
 
-    func bench() {
+    func sendTextStream() {
+        
         Task {
-            await llamaState.bench()
+            var prompt = multiLineText
+            multiLineText = ""
+            let generate_str = await llamaState.complete(text: prompt)
+            //multiLineText = ""
+            //await ttsState.generate_by_str(text: generate_str)
+        }
+    }
+    func test_tts() {
+        Task {
+            var prompt = multiLineText
+            //await ttsState.generate_by_str(text: prompt)
+        }
+    }
+    
+    func bench() {
+        
+        Task {
+            var prompt = multiLineText
+            multiLineText = ""
+            let generate_str = await llamaState.complete(text: prompt, stream: false)
         }
     }
 
