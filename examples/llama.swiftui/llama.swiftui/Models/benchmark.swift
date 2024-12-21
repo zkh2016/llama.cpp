@@ -103,7 +103,7 @@ class Benchmark: ObservableObject {
     func loadModel(modelUrl: URL?) throws {
         if let modelUrl {
             messageLog += "Loading model...\n"
-            llamaContext = try LlamaContext.create_context(path: modelUrl.path())
+            llamaContext = try LlamaContext.create_context(path: modelUrl.path(), use_metal: true)
             
             messageLog += "Loaded model \(modelUrl.lastPathComponent)\n"
 
@@ -123,22 +123,39 @@ class Benchmark: ObservableObject {
         guard let llamaContext else {
             return
         }
-        var input_str = "<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
-        var generate_str = ""
-        var generate_cnt = 0
-        var total_len = 0
-        var total_time = 0.0
+       
+        start_time = DispatchTime.now().uptimeNanoseconds
         
         Task.detached {[weak self] in
             guard let self = self else { return }
+            let input_str = "<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
+            await llamaContext.completion_init(text: input_str)
+
+            var generate_str = ""
+            var generate_cnt = 0
+            var t_start = DispatchTime.now().uptimeNanoseconds
+
             while await !llamaContext.is_done {
                 while sharedQueue.count >= queueCapacity {
                     await Task.yield()
                 }
                 let result = await llamaContext.completion_loop(no_stop: true)
-                sharedQueue.append(result)
+                
                 generate_str += result
                 generate_cnt += 1
+                if(generate_cnt == 7){
+                    let t_end = DispatchTime.now().uptimeNanoseconds
+                    let llm_time = Double(t_end - t_start) / NS_PER_S
+                    sharedQueue.append(generate_str)
+                    generate_cnt = 0
+                    print("""
+                        \(generate_str)
+                        llm time \(llm_time)\n
+                    """
+                    )
+                    generate_str = ""
+                    t_start = DispatchTime.now().uptimeNanoseconds
+                }
             }
         }
     }
@@ -159,32 +176,24 @@ class Benchmark: ObservableObject {
         var t_heat_end = DispatchTime.now().uptimeNanoseconds
         let t_heat = Double(t_heat_end - t_start) / NS_PER_S
 
+        
         while await !llamaContext.is_done {
             let result = await llamaContext.completion_loop(no_stop: true)
-            if(stream){
-                await MainActor.run {
-                    self.messageLog += "\(result)"
-                    generate_str += "\(result)"
-                    generate_cnt += 1
-                }
-            }else{
-                generate_str += result
-                generate_cnt += 1
-            }
+            generate_str += result
+            generate_cnt += 1
+            
             total_len += 1
             if(generate_cnt == 7){
                 let t_end = DispatchTime.now().uptimeNanoseconds
                 let t_generation = Double(t_end - t_heat_end) / self.NS_PER_S
-                let tokens_per_second = Double(generate_cnt) / t_generation
-               
                 var tts_out = await tts?.only_generate_by_str(text: generate_str)
                 let tts_end = DispatchTime.now().uptimeNanoseconds
                 let tts_generation = Double(tts_end - t_end) / self.NS_PER_S
                 total_time += t_generation + tts_generation
-
+                
                 generate_str += tts_out ?? ""
                 //self.messageLog += generate_str + """
-                var out_str = generate_str + """
+                let out_str = generate_str + """
                     \n
                     Done
                     Heat up took \(t_heat)s
@@ -200,7 +209,7 @@ class Benchmark: ObservableObject {
                 t_heat_end = DispatchTime.now().uptimeNanoseconds
             }
         }
-
+        
         await llamaContext.clear()
     
         return generate_str

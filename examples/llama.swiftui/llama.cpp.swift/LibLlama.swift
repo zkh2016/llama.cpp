@@ -67,7 +67,7 @@ actor LlamaContext {
         model_params.n_gpu_layers = 0
         print("Running on simulator, force use n_gpu_layers = 0")
 #endif
-        var n_threads = max(1, min(8, ProcessInfo.processInfo.processorCount - 2))
+        var n_threads = 1 //max(1, min(8, ProcessInfo.processInfo.processorCount - 2))
         if(!use_metal){
             model_params.n_gpu_layers = 0
             n_threads = 4
@@ -80,8 +80,6 @@ actor LlamaContext {
             print("Could not load model at \(path)")
             throw LlamaError.couldNotInitializeContext
         }
-
-       
 
         var ctx_params = llama_context_default_params()
         ctx_params.n_ctx = 8192

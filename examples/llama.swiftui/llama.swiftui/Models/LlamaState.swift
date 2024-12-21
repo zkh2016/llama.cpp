@@ -4,8 +4,9 @@ import SwiftUI
 
 var sharedQueue: [String] = []
 let queueCapacity = 7 * 8
-         // 用于保护队列的访问
-
+var start_time: UInt64 = 0
+var total_time = 0.0
+var total_cnt = 0
 
 struct Model: Identifiable {
     var id = UUID()
@@ -23,7 +24,7 @@ class ConditionalChatTTS: ObservableObject {
     init(){
         //self.messageLog = messageLog
         var ttsUrl: URL? {
-            Bundle.main.url(forResource: "tts-ggml-model-Q4_0", withExtension: "gguf", subdirectory: "models")
+            Bundle.main.url(forResource: "tts-ggml-model-Q8_0", withExtension: "gguf", subdirectory: "models")
         }
 
         if let ttsUrl {
@@ -65,18 +66,37 @@ class ConditionalChatTTS: ObservableObject {
         var generate_cnt = 0
         Task.detached {[weak self] in
             guard let self = self else { return }
-            while sharedQueue.isEmpty {
-                await Task.yield()
-            }
-            let input_str = sharedQueue.removeFirst()
-            await TTSContext.completion_init(text: input_str)
-            
-            while await !TTSContext.is_done {
-                let result = await TTSContext.completion_loop(no_stop:true)
-                generate_str += result
-                generate_cnt += 1
-                if(generate_cnt == 50){
-                    break
+            while true{
+                while sharedQueue.isEmpty {
+                    await Task.yield()
+                }
+                let input_str = sharedQueue.removeFirst()
+                let t_start = DispatchTime.now().uptimeNanoseconds
+                await TTSContext.completion_init(text: input_str)
+                
+                while await !TTSContext.is_done {
+                    let result = await TTSContext.completion_loop(no_stop:true)
+                    generate_str += result
+                    generate_cnt += 1
+                    if(generate_cnt == 50){
+                        total_cnt += 7
+                        let t_end = DispatchTime.now().uptimeNanoseconds
+                        total_time = Double(t_end - start_time) / NS_PER_S
+                        let tts_time = Double(t_end - t_start) / NS_PER_S
+                        print(
+                            """
+                                \(generate_str) \n
+                                buffer.cnt = \(sharedQueue.count)\n
+                                tts Done
+                                llm Generated \(total_cnt) t\n
+                                tts_time \(tts_time)\n
+                                total_time \(total_time)s
+                            """
+                        )
+                        generate_cnt = 0
+                        generate_str = ""
+                        break
+                    }
                 }
             }
             

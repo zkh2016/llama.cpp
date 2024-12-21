@@ -42,9 +42,13 @@ struct ContentView: View {
                         bench()
                     }
 
-                    Button("Clear") {
-                        clear()
-                    }
+//                    Button("Clear") {
+//                        clear()
+//                    }
+                    Button("bench_sync") {
+                       bench_sync()
+                   }
+
 
                     Button("Copy") {
                         UIPasteboard.general.string = llamaState.messageLog
@@ -99,6 +103,16 @@ struct ContentView: View {
             var prompt = multiLineText
             multiLineText = ""
             let generate_str = await llamaState.complete(text: prompt, stream: false)
+        }
+    }
+    func bench_sync() {
+        
+        Task {
+            var prompt = multiLineText
+            multiLineText = ""
+            llamaState.producer(text: prompt)
+            llamaState.tts?.consumer()
+            
         }
     }
 
