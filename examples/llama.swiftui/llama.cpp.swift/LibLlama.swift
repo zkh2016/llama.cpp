@@ -83,7 +83,7 @@ actor LlamaContext {
 
         var ctx_params = llama_context_default_params()
         ctx_params.n_ctx = 8192
-        ctx_params.n_batch = 8192
+        ctx_params.n_batch = 2048
         ctx_params.n_threads       = Int32(n_threads)
         ctx_params.n_threads_batch = Int32(n_threads)
 
@@ -119,6 +119,9 @@ actor LlamaContext {
     func get_n_tokens() -> Int32 {
         return batch.n_tokens;
     }
+    func encode(text:String) -> [Int32] {
+       return tokenize(text: text, add_bos: true)
+    }
 
     func completion_init(text: String) {
         print("attempting to complete \"\(text)\"")
@@ -141,7 +144,7 @@ actor LlamaContext {
 //            print(String(cString: token_to_piece(token: id) + [0]))
 //        }
 
-        llama_batch_clear(&batch)
+        //llama_batch_clear(&batch)
 
         for i1 in 0..<tokens_list.count {
             let i = Int(i1)
@@ -153,6 +156,21 @@ actor LlamaContext {
             print("llama_decode() failed")
         }
 
+        n_cur = batch.n_tokens
+    }
+    
+    func prefill(tokens_list: [Int32]) {
+        let start = Int(batch.n_tokens)
+        for i1 in 0..<tokens_list.count {
+            let i = Int(i1)
+            llama_batch_add(&batch, tokens_list[i], Int32(i + start), [0], false)
+        }
+        batch.logits[Int(batch.n_tokens) - 1] = 1 // true
+
+        if llama_decode(context, batch) != 0 {
+            print("llama_decode() failed")
+        }
+       
         n_cur = batch.n_tokens
     }
     

@@ -215,6 +215,41 @@ class Benchmark: ObservableObject {
         return generate_str
     }
 
+    func test_vit_and_llm_prefill(text: String) async {
+        guard let llamaContext else {
+            return
+        }
+        messageLog += text
+        var input_str = "<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
+        var generate_str = ""
+        let tokens_list = await llamaContext.encode(text: input_str)
+        print("total token: \(tokens_list.count)")
+        let batch_size = 1000
+        var start = 0
+        var end = batch_size
+        while true{
+            if end > tokens_list.count{
+                end = tokens_list.count
+            }
+            let chunk = tokens_list[start..<end]
+            let t0 = DispatchTime.now().uptimeNanoseconds
+            await llamaContext.prefill(tokens_list: Array(chunk))
+            let t1 = DispatchTime.now().uptimeNanoseconds
+            let t = Double(t1 - t0) / NS_PER_S
+            print("prefill time \(t)s")
+            //print(new_str)
+            if end == tokens_list.count {
+                break
+            }
+            start = end
+            end += batch_size
+        }
+        while await !llamaContext.is_done {
+            let result = await llamaContext.completion_loop(no_stop: true)
+            print(result)
+        }
+    }
+    
     func bench() async {
         guard let llamaContext else {
             return

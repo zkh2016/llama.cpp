@@ -4,6 +4,7 @@ struct ContentView: View {
 //    @StateObject var llamaState = LlamaState()
 //    @StateObject var ttsState  = ConditionalChatTTS()
     @StateObject var llamaState = Benchmark()
+    //@StateObject var vitState = ViT()
 
     @State private var multiLineText = ""
     @State private var showingHelp = false    // To track if Help Sheet should be shown
@@ -25,31 +26,33 @@ struct ContentView: View {
                 TextEditor(text: $multiLineText)
                     .frame(height: 80)
                     .padding()
-                    .border(Color.gray, width: 0.5)
+                    .border(Color.gray, width: 1)
 
                 HStack {
-                    Button("TestLLM") {
-                        sendText()
-                    }
-                    Button("TestLLMStream") {
-                        sendTextStream()
-                    }
-
-                    Button("TestTTS") {
-                        test_tts()
-                    }
-                    Button("bench") {
-                        bench()
-                    }
+//                    Button("TestLLM") {
+//                        sendText()
+//                    }
+//                    Button("TestLLMStream") {
+//                        sendTextStream()
+//                    }
+//
+//                    Button("TestTTS") {
+//                        test_tts()
+//                    }
+//                    Button("bench") {
+//                        bench()
+//                    }
 
 //                    Button("Clear") {
 //                        clear()
 //                    }
                     Button("bench_sync") {
                        bench_sync()
-                   }
+                    }
 
-
+                    Button("clear") {
+                       clear()
+                    }
                     Button("Copy") {
                         UIPasteboard.general.string = llamaState.messageLog
                     }
@@ -118,7 +121,10 @@ struct ContentView: View {
 
     func clear() {
         Task {
-            await llamaState.clear()
+            //await llamaState.clear()
+            await llamaState.test_vit_and_llm_prefill(text: multiLineText)
+            multiLineText = ""
+            //vitState.test()
         }
     }
     struct DrawerView: View {
