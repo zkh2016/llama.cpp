@@ -16,6 +16,8 @@ class Benchmark: ObservableObject {
     private var llamaContext: LlamaContext?
 //    private var TTSContext: LlamaContext?
     var tts : ConditionalChatTTS?
+    var vit = ViT()
+
 
     private var defaultModelUrl: URL? {
         Bundle.main.url(forResource: "qwen2.5-7b-instruct-q4_0", withExtension: "gguf", subdirectory: "models")
@@ -214,7 +216,70 @@ class Benchmark: ObservableObject {
     
         return generate_str
     }
-
+    
+    func test_async_vit_and_llm(text: String) async {
+        guard let llamaContext else {
+            return
+        }
+        let input = try! MLMultiArray(shape: [1, 3, 14, 14336], dataType: .float32)
+        let tgt_sizes = try! MLMultiArray(shape: [1, 2], dataType: .float32)
+        let patch_sizes = try! MLMultiArray(shape: [1, 2], dataType: .float32)
+        var sharedQueue: [MLMultiArray] = []
+        let queueCapacity = 4
+        
+//        Task.detached {[weak self] in
+//            guard let self = self else { return }
+//            while true {
+//                while sharedQueue.count >= queueCapacity {
+//                    await Task.yield()
+//                }
+//                let t0 = DispatchTime.now().uptimeNanoseconds
+//                let out = await vit.forward(input: input, tgt_sizes: tgt_sizes, patch_sizes: patch_sizes)
+//                let t1 = DispatchTime.now().uptimeNanoseconds
+//                let t = Double(t1 - t0) / NS_PER_S
+//                print("vit time \(t)s")
+//                sharedQueue.append(out)
+//            }
+//        }
+        
+        var input_str = "<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
+        var generate_str = ""
+        let tokens_list = await llamaContext.encode(text: input_str)
+        let batch_size = 100
+        var start = 0
+        var end = batch_size
+        Task.detached {[weak self] in
+            guard let self = self else { return }
+            var total_cnt = 0
+            while true {
+//                while sharedQueue.isEmpty {
+//                    await Task.yield()
+//                }
+//                let vit_out = sharedQueue.removeFirst()
+//                print(vit_out.shape)
+                if end > tokens_list.count{
+                    end = tokens_list.count
+                }
+                let chunk = tokens_list[start..<end]
+                let t0 = DispatchTime.now().uptimeNanoseconds
+                await llamaContext.prefill(tokens_list: Array(chunk))
+                let t1 = DispatchTime.now().uptimeNanoseconds
+                let t = Double(t1 - t0) / NS_PER_S
+                print("llm prefill time \(t)s")
+                total_cnt += end - start
+                print("buffer cnt = \(sharedQueue.count)")
+                print("total_cnt = \(total_cnt)")
+                if(end == tokens_list.count){
+                    start = 0
+                    end = batch_size
+                }else{
+                    start = end
+                    end += batch_size
+                }
+            }
+        }
+    }
+    
     func test_vit_and_llm_prefill(text: String) async {
         guard let llamaContext else {
             return
@@ -224,7 +289,9 @@ class Benchmark: ObservableObject {
         var generate_str = ""
         let tokens_list = await llamaContext.encode(text: input_str)
         print("total token: \(tokens_list.count)")
-        let batch_size = 1000
+//        await llamaContext.prefill(tokens_list: tokens_list)
+//        await llamaContext.clear()
+        let batch_size = 100
         var start = 0
         var end = batch_size
         while true{

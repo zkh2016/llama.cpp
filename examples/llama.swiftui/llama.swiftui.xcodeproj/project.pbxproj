@@ -9,10 +9,11 @@
 /* Begin PBXBuildFile section */
 		4489EF942D1543790087ECEE /* tts-ggml-model-Q8_0.gguf in Resources */ = {isa = PBXBuildFile; fileRef = 4489EF932D1543790087ECEE /* tts-ggml-model-Q8_0.gguf */; };
 		4489EF962D1553240087ECEE /* tts-ggml-model-Q4_0.gguf in Resources */ = {isa = PBXBuildFile; fileRef = 4489EF952D1553240087ECEE /* tts-ggml-model-Q4_0.gguf */; };
+		44AC18402D1A5E0F0016D215 /* ane_vit_fp16.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 44AC183F2D1A5E0E0016D215 /* ane_vit_fp16.mlpackage */; };
+		44AC18442D1A64E30016D215 /* exported_resampler_f16.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 44AC18432D1A64E30016D215 /* exported_resampler_f16.mlpackage */; };
 		44CA21B92D141A120045C3C1 /* qwen2.5-7b-instruct-q4_0.gguf in Resources */ = {isa = PBXBuildFile; fileRef = 44CA21B82D141A120045C3C1 /* qwen2.5-7b-instruct-q4_0.gguf */; };
 		44DE4CC02D1587B800141A9D /* benchmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44DE4CBF2D1587B800141A9D /* benchmark.swift */; };
 		44DE4CC22D16A4C300141A9D /* vit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44DE4CC12D16A4C300141A9D /* vit.swift */; };
-		44DE4CC62D16AB4700141A9D /* exported_minicpm3o_f16.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 44DE4CC52D16AB4700141A9D /* exported_minicpm3o_f16.mlpackage */; };
 		549479CB2AC9E16000E0F78B /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 549479CA2AC9E16000E0F78B /* Metal.framework */; };
 		79E1D9CD2B4CD16E005F8E46 /* InputButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E1D9CC2B4CD16E005F8E46 /* InputButton.swift */; };
 		7FA3D2B32B2EA2F600543F92 /* DownloadButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA3D2B22B2EA2F600543F92 /* DownloadButton.swift */; };
@@ -43,11 +44,13 @@
 /* Begin PBXFileReference section */
 		4489EF932D1543790087ECEE /* tts-ggml-model-Q8_0.gguf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "tts-ggml-model-Q8_0.gguf"; sourceTree = "<group>"; };
 		4489EF952D1553240087ECEE /* tts-ggml-model-Q4_0.gguf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "tts-ggml-model-Q4_0.gguf"; sourceTree = "<group>"; };
+		44AC183F2D1A5E0E0016D215 /* ane_vit_fp16.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = ane_vit_fp16.mlpackage; sourceTree = "<group>"; };
+		44AC18432D1A64E30016D215 /* exported_resampler_f16.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = exported_resampler_f16.mlpackage; sourceTree = "<group>"; };
+		44AC18452D1A84540016D215 /* llama.swiftui.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = llama.swiftui.entitlements; sourceTree = "<group>"; };
 		44CA21A02D13C1FC0045C3C1 /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
 		44CA21B82D141A120045C3C1 /* qwen2.5-7b-instruct-q4_0.gguf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "qwen2.5-7b-instruct-q4_0.gguf"; sourceTree = "<group>"; };
 		44DE4CBF2D1587B800141A9D /* benchmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = benchmark.swift; sourceTree = "<group>"; };
 		44DE4CC12D16A4C300141A9D /* vit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = vit.swift; sourceTree = "<group>"; };
-		44DE4CC52D16AB4700141A9D /* exported_minicpm3o_f16.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = exported_minicpm3o_f16.mlpackage; sourceTree = "<group>"; };
 		549479CA2AC9E16000E0F78B /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		79E1D9CC2B4CD16E005F8E46 /* InputButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputButton.swift; sourceTree = "<group>"; };
 		7FA3D2B22B2EA2F600543F92 /* DownloadButton.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DownloadButton.swift; sourceTree = "<group>"; };
@@ -80,7 +83,8 @@
 		8A1C836A2AC328BD0096AF73 = {
 			isa = PBXGroup;
 			children = (
-				44DE4CC52D16AB4700141A9D /* exported_minicpm3o_f16.mlpackage */,
+				44AC18432D1A64E30016D215 /* exported_resampler_f16.mlpackage */,
+				44AC183F2D1A5E0E0016D215 /* ane_vit_fp16.mlpackage */,
 				DF2D2FE72B4A59BE00FCB72D /* llama.cpp */,
 				8A907F312AC7134E006146EA /* llama.cpp.swift */,
 				8A3F84232AC4C891005E2EE8 /* models */,
@@ -101,6 +105,7 @@
 		8A1C83752AC328BD0096AF73 /* llama.swiftui */ = {
 			isa = PBXGroup;
 			children = (
+				44AC18452D1A84540016D215 /* llama.swiftui.entitlements */,
 				8A3F84102AC4BD85005E2EE8 /* Resources */,
 				8A9F7C4B2AC332DC008AE1EA /* Models */,
 				8A9F7C4A2AC332BF008AE1EA /* UI */,
@@ -250,10 +255,11 @@
 				F1FE20E22B465ECA00B45541 /* LoadCustomButton.swift in Sources */,
 				8A907F332AC7138A006146EA /* LibLlama.swift in Sources */,
 				8A9F7C4D2AC332EE008AE1EA /* LlamaState.swift in Sources */,
+				44AC18442D1A64E30016D215 /* exported_resampler_f16.mlpackage in Sources */,
+				44AC18402D1A5E0F0016D215 /* ane_vit_fp16.mlpackage in Sources */,
 				8A1C83792AC328BD0096AF73 /* ContentView.swift in Sources */,
 				8A1C83772AC328BD0096AF73 /* llama_swiftuiApp.swift in Sources */,
 				7FA3D2B32B2EA2F600543F92 /* DownloadButton.swift in Sources */,
-				44DE4CC62D16AB4700141A9D /* exported_minicpm3o_f16.mlpackage in Sources */,
 				79E1D9CD2B4CD16E005F8E46 /* InputButton.swift in Sources */,
 				44DE4CC02D1587B800141A9D /* benchmark.swift in Sources */,
 				44DE4CC22D16A4C300141A9D /* vit.swift in Sources */,
@@ -315,7 +321,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -366,13 +372,14 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 3;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -388,6 +395,7 @@
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = llama.swiftui/llama.swiftui.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8U538LMC3K;
@@ -403,10 +411,13 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.zkh.llama-swift";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.AAA2.llama-swift";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator xros xrsimulator";
+				REGISTER_APP_GROUPS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -421,6 +432,7 @@
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = llama.swiftui/llama.swiftui.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8U538LMC3K;
@@ -436,10 +448,13 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.zkh.llama-swift";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.AAA2.llama-swift";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator xros xrsimulator";
+				REGISTER_APP_GROUPS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;

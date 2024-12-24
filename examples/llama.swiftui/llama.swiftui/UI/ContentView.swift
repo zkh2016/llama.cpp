@@ -39,23 +39,20 @@ struct ContentView: View {
 //                    Button("TestTTS") {
 //                        test_tts()
 //                    }
-//                    Button("bench") {
-//                        bench()
-//                    }
+                    Button("bench") {
+                        bench()
+                    }
 
-//                    Button("Clear") {
-//                        clear()
-//                    }
                     Button("bench_sync") {
                        bench_sync()
                     }
 
-                    Button("clear") {
-                       clear()
+                    Button("test_prefill") {
+                        test_prefill()
                     }
-                    Button("Copy") {
-                        UIPasteboard.general.string = llamaState.messageLog
-                    }
+//                    Button("Copy") {
+//                        UIPasteboard.general.string = llamaState.messageLog
+//                    }
                 }
                 .buttonStyle(.bordered)
                 .padding()
@@ -119,12 +116,13 @@ struct ContentView: View {
         }
     }
 
-    func clear() {
+    func test_prefill() {
         Task {
             //await llamaState.clear()
-            await llamaState.test_vit_and_llm_prefill(text: multiLineText)
+            //await llamaState.test_vit_and_llm_prefill(text: multiLineText)
+            await llamaState.test_async_vit_and_llm(text: multiLineText)
             multiLineText = ""
-            //vitState.test()
+            //vitState.performance()
         }
     }
     struct DrawerView: View {

@@ -156,9 +156,11 @@ class Model:
                 from safetensors import safe_open
                 ctx = cast(ContextManager[Any], safe_open(self.dir_model / part_name, framework="pt", device="cpu"))
             else:
-                ctx = contextlib.nullcontext(torch.load(str(self.dir_model / part_name), map_location="cpu", mmap=True, weights_only=True))
+                print("=====model : ", str(self.dir_model / part_name))
+                ctx = contextlib.nullcontext(torch.load(str(self.dir_model / part_name), map_location="cpu", mmap=True))
 
             with ctx as model_part:
+                model_part = model_part.state_dict()
                 tensor_names_from_parts.update(model_part.keys())
 
                 for name in model_part.keys():

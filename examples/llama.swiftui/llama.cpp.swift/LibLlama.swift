@@ -82,8 +82,9 @@ actor LlamaContext {
         }
 
         var ctx_params = llama_context_default_params()
-        ctx_params.n_ctx = 8192
+        ctx_params.n_ctx = 4096
         ctx_params.n_batch = 2048
+        ctx_params.n_ubatch = 512
         ctx_params.n_threads       = Int32(n_threads)
         ctx_params.n_threads_batch = Int32(n_threads)
 
@@ -161,8 +162,10 @@ actor LlamaContext {
     
     func prefill(tokens_list: [Int32]) {
         let start = Int(batch.n_tokens)
+        llama_batch_clear(&batch)
         for i1 in 0..<tokens_list.count {
             let i = Int(i1)
+            // print("In prefill, \(i), \(start)")
             llama_batch_add(&batch, tokens_list[i], Int32(i + start), [0], false)
         }
         batch.logits[Int(batch.n_tokens) - 1] = 1 // true

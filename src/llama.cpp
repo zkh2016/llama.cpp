@@ -5400,7 +5400,12 @@ static void llm_load_hparams(
         case LLM_ARCH_LLAMA:
             {
                 ml.get_key(LLM_KV_ATTENTION_LAYERNORM_RMS_EPS, hparams.f_norm_rms_eps);
-
+                bool found_swa = ml.get_key(LLM_KV_ATTENTION_SLIDING_WINDOW, hparams.n_swa, false);
+               if (!found_swa && hparams.n_swa == 0) {
+                   throw std::runtime_error("invalid value for sliding_window");
+               }else{
+                   printf("======n_swa = %d\n", hparams.n_swa);
+               }
                 if (hparams.n_expert == 8) {
                     switch (hparams.n_layer) {
                         case 32: model.type = e_model::MODEL_8x7B; break;
