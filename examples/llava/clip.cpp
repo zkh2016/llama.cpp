@@ -608,7 +608,7 @@ static ggml_cgraph * clip_image_build_graph(clip_ctx * ctx, const clip_image_f32
     struct ggml_context * ctx0 = ggml_init(params);
     struct ggml_cgraph * gf = ggml_new_graph(ctx0);
 
-    printf("4d in: %d %d\n", image_size_height, image_size_width);
+    //printf("4d in: %d %d\n", image_size_height, image_size_width);
     /*
         (1032, 1152)
         (1015, 1152)
@@ -1747,13 +1747,13 @@ static bool bicubic_resize(const clip_image_u8 &img, clip_image_u8 &dst, int tar
             for(int y = 0; y < src_mat.rows; y++){
                 for(int x = 0; x < src_mat.cols; x++){
                     cv::Vec3b& pixel = src_mat.at<cv::Vec3b>(y, x);
-                    if(y < 10 && x < 10)
-                        std::cout << (int)pixel[0] << " " << (int)pixel[1] << " " << (int)pixel[2] << ", ";
+                    //if(y < 10 && x < 10)
+                    //    std::cout << (int)pixel[0] << " " << (int)pixel[1] << " " << (int)pixel[2] << ", ";
             
-                    fprintf(fp_src, "%d, %d, %d\n", (int)pixel[0], (int)pixel[1], (int)pixel[2]);
+                    //fprintf(fp_src, "%d, %d, %d\n", (int)pixel[0], (int)pixel[1], (int)pixel[2]);
                 }
-                if(y < 10)
-                    std::cout << std::endl;
+                ///if(y < 10)
+                ///    std::cout << std::endl;
             }
         }
         
@@ -1765,7 +1765,7 @@ static bool bicubic_resize(const clip_image_u8 &img, clip_image_u8 &dst, int tar
             uint8_t *ptr = dst_mat.ptr<uint8_t>(i);
             memcpy(dst.buf.data() + i * dst_mat.cols * 3, ptr, dst_mat.cols * 3);
             for(int j = 0; j < dst_mat.cols; j++){
-                fprintf(fp_resize, "%d, %d, %d\n", (int)ptr[j * 3 + 0], (int)ptr[j * 3 + 1], (int)ptr[j * 3 + 2]);
+                //fprintf(fp_resize, "%d, %d, %d\n", (int)ptr[j * 3 + 0], (int)ptr[j * 3 + 1], (int)ptr[j * 3 + 2]);
             }
         }
         fclose(fp_resize);
@@ -1799,13 +1799,13 @@ static bool bicubic_resize(cv::Mat &src_mat, clip_image_u8 &dst, int target_widt
             for(int y = 0; y < src_mat.rows; y++){
                 for(int x = 0; x < src_mat.cols; x++){
                     cv::Vec3b& pixel = src_mat.at<cv::Vec3b>(y, x);
-                    if(y < 10 && x < 10)
-                        std::cout << (int)pixel[0] << " " << (int)pixel[1] << " " << (int)pixel[2] << ", ";
+                    //if(y < 10 && x < 10)
+                    //    std::cout << (int)pixel[0] << " " << (int)pixel[1] << " " << (int)pixel[2] << ", ";
             
-                    fprintf(fp_src, "%d, %d, %d\n", (int)pixel[0], (int)pixel[1], (int)pixel[2]);
+                    //fprintf(fp_src, "%d, %d, %d\n", (int)pixel[0], (int)pixel[1], (int)pixel[2]);
                 }
-                if(y < 10)
-                    std::cout << std::endl;
+                //if(y < 10)
+                //    std::cout << std::endl;
             }
         }
         
@@ -1817,7 +1817,7 @@ static bool bicubic_resize(cv::Mat &src_mat, clip_image_u8 &dst, int target_widt
             uint8_t *ptr = dst_mat.ptr<uint8_t>(i);
             memcpy(dst.buf.data() + i * dst_mat.cols * 3, ptr, dst_mat.cols * 3);
             for(int j = 0; j < dst_mat.cols; j++){
-                fprintf(fp_resize, "%d, %d, %d\n", (int)ptr[j * 3 + 0], (int)ptr[j * 3 + 1], (int)ptr[j * 3 + 2]);
+                //fprintf(fp_resize, "%d, %d, %d\n", (int)ptr[j * 3 + 0], (int)ptr[j * 3 + 1], (int)ptr[j * 3 + 2]);
             }
         }
         fclose(fp_resize);
@@ -2021,7 +2021,7 @@ static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(const clip_imag
 
     if (multiple <= 1) {
         auto best_size = uhd_find_best_resize(original_size, scale_resolution, patch_size, true);
-        printf("best_size = %d %d\n", best_size.first, best_size.second);
+        //printf("best_size = %d %d\n", best_size.first, best_size.second);
         clip_image_u8 * source_image = clip_image_u8_init();
         bicubic_resize(*img, *source_image, best_size.first, best_size.second);
         // source_image = image.resize(best_size, Image.Resampling.BICUBIC)
@@ -2029,11 +2029,11 @@ static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(const clip_imag
     }
     else if (multiple > 1) {
         auto best_size = uhd_find_best_resize(original_size, scale_resolution, patch_size);
-        printf("best_size = %d %d\n", best_size.first, best_size.second);
+        //printf("best_size = %d %d\n", best_size.first, best_size.second);
         clip_image_u8 * source_image = clip_image_u8_init();
-        printf("====img shape : %d %d\n", img->ny, img->nx);
+        //printf("====img shape : %d %d\n", img->ny, img->nx);
         bicubic_resize(*img, *source_image, best_size.first, best_size.second);
-        printf("====resize img shape : %d %d, %d %d\n", source_image->ny, source_image->nx, best_size.first, best_size.second);
+        //printf("====resize img shape : %d %d, %d %d\n", source_image->ny, source_image->nx, best_size.first, best_size.second);
         //exit(0);
         // source_image = image.copy().resize(best_resize, Image.Resampling.BICUBIC)
         LOG_TEE("%s: image_size: %d %d; source_image size: %d %d\n", __func__, img->nx, img->ny, best_size.first, best_size.second);
@@ -2043,8 +2043,8 @@ static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(const clip_imag
         LOG_TEE("%s: image_size: %d %d; best_grid: %d %d\n", __func__, img->nx, img->ny, best_grid.first, best_grid.second);
 
         auto refine_size = uhd_get_refine_size(original_size, best_grid, scale_resolution, patch_size, true);
-        printf("original_size = %d %d\n", original_size.first, original_size.second);
-        printf("refine_size = %d %d\n", refine_size.first, refine_size.second);
+        //printf("original_size = %d %d\n", original_size.first, original_size.second);
+        //printf("refine_size = %d %d\n", refine_size.first, refine_size.second);
         clip_image_u8 * refine_image = clip_image_u8_init();
         bicubic_resize(*img, *refine_image, refine_size.first, refine_size.second);
 
@@ -2093,7 +2093,7 @@ static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(cv::Mat& img, c
 
     if (multiple <= 1) {
         auto best_size = uhd_find_best_resize(original_size, scale_resolution, patch_size, true);
-        printf("best_size = %d %d\n", best_size.first, best_size.second);
+        //printf("best_size = %d %d\n", best_size.first, best_size.second);
         clip_image_u8 * source_image = clip_image_u8_init();
         bicubic_resize(img, *source_image, best_size.first, best_size.second);
         // source_image = image.resize(best_size, Image.Resampling.BICUBIC)
@@ -2101,7 +2101,7 @@ static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(cv::Mat& img, c
     }
     else if (multiple > 1) {
         auto best_size = uhd_find_best_resize(original_size, scale_resolution, patch_size);
-        printf("best_size = %d %d\n", best_size.first, best_size.second);
+        //printf("best_size = %d %d\n", best_size.first, best_size.second);
         clip_image_u8 * source_image = clip_image_u8_init();
         //printf("====img shape : %d %d\n", img->ny, img->nx);
         bicubic_resize(img, *source_image, best_size.first, best_size.second);
@@ -2109,7 +2109,7 @@ static std::vector<std::vector<clip_image_u8 *>> uhd_slice_image(cv::Mat& img, c
         //exit(0);
         // source_image = image.copy().resize(best_resize, Image.Resampling.BICUBIC)
         LOG_TEE("%s: image_size: %d %d; source_image size: %d %d\n", __func__, img.cols, img.rows, best_size.first, best_size.second);
-        printf("source_image.shape = %d %d\n", source_image->nx, source_image->ny);
+        //printf("source_image.shape = %d %d\n", source_image->nx, source_image->ny);
         images[images.size()-1].push_back(source_image);
 
         std::pair<int, int> best_grid = uhd_best_grid(max_slice_nums, multiple, log_ratio);
@@ -2825,7 +2825,7 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
     
     {
         struct ggml_tensor * inp_raw = ggml_graph_get_tensor(gf, "inp_raw");
-        printf("===set input, imgs->size = %d, inp_raw size = %d\n", imgs->size, ggml_nbytes(inp_raw) / sizeof(float));
+        //printf("===set input, imgs->size = %d, inp_raw size = %d\n", imgs->size, ggml_nbytes(inp_raw) / sizeof(float));
 
         float * data = (float *)malloc(ggml_nbytes(inp_raw));
         FILE *fp = fopen("c_data.txt", "a+");
@@ -2833,7 +2833,7 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
         for (size_t i = 0; i < imgs->size; i++) {
             const int nx = imgs->data[i].nx;
             const int ny = imgs->data[i].ny;
-            printf("ny = %d, nx = %d\n", ny, nx);
+            //printf("ny = %d, nx = %d\n", ny, nx);
             if (!ctx->has_minicpmv_projector) {
                 GGML_ASSERT(nx == image_size && ny == image_size);
             }
@@ -2846,7 +2846,7 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
                         for (int x = 0; x < nx; x++) {
                             data[(b * 3 * n) + k * n + y * nx + x] = imgs->data[b].buf[3 * (y * nx + x) + k];
                             
-                            fprintf(fp, "%.8f\n", imgs->data[b].buf[3 * (y * nx + x) + k]);
+                            //fprintf(fp, "%.8f\n", imgs->data[b].buf[3 * (y * nx + x) + k]);
                             // if(x != nx-1){
                             //     fprintf(fp, ", ");
                             // }
@@ -2867,7 +2867,7 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
             struct ggml_tensor * positions = ggml_graph_get_tensor(gf, "positions");
 
             int* positions_data = (int*)malloc(ggml_nbytes(positions));
-            printf("num_positins = %d\n", num_positions);
+            //printf("num_positins = %d\n", num_positions);
             for (int i = 0; i < num_positions; i++) {
                 positions_data[i] = i;
             }

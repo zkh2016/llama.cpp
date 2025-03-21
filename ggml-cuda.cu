@@ -98,17 +98,17 @@ static ggml_cuda_device_info ggml_cuda_init() {
     GGML_ASSERT(info.device_count <= GGML_CUDA_MAX_DEVICES);
 
     int64_t total_vram = 0;
-#if defined(GGML_CUDA_FORCE_MMQ)
-    fprintf(stderr, "%s: GGML_CUDA_FORCE_MMQ:   yes\n", __func__);
-#else
-    fprintf(stderr, "%s: GGML_CUDA_FORCE_MMQ:   no\n", __func__);
-#endif
-#if defined(CUDA_USE_TENSOR_CORES)
-    fprintf(stderr, "%s: CUDA_USE_TENSOR_CORES: yes\n", __func__);
-#else
-    fprintf(stderr, "%s: CUDA_USE_TENSOR_CORES: no\n", __func__);
-#endif
-    fprintf(stderr, "%s: found %d " GGML_CUDA_NAME " devices:\n", __func__, info.device_count);
+//#if defined(GGML_CUDA_FORCE_MMQ)
+//    fprintf(stderr, "%s: GGML_CUDA_FORCE_MMQ:   yes\n", __func__);
+//#else
+//    fprintf(stderr, "%s: GGML_CUDA_FORCE_MMQ:   no\n", __func__);
+//#endif
+//#if defined(CUDA_USE_TENSOR_CORES)
+//    fprintf(stderr, "%s: CUDA_USE_TENSOR_CORES: yes\n", __func__);
+//#else
+//    fprintf(stderr, "%s: CUDA_USE_TENSOR_CORES: no\n", __func__);
+//#endif
+//    fprintf(stderr, "%s: found %d " GGML_CUDA_NAME " devices:\n", __func__, info.device_count);
     for (int id = 0; id < info.device_count; ++id) {
         int device_vmm = 0;
 
@@ -129,7 +129,7 @@ static ggml_cuda_device_info ggml_cuda_init() {
 
         cudaDeviceProp prop;
         CUDA_CHECK(cudaGetDeviceProperties(&prop, id));
-        fprintf(stderr, "  Device %d: %s, compute capability %d.%d, VMM: %s\n", id, prop.name, prop.major, prop.minor, device_vmm ? "yes" : "no");
+//        fprintf(stderr, "  Device %d: %s, compute capability %d.%d, VMM: %s\n", id, prop.name, prop.major, prop.minor, device_vmm ? "yes" : "no");
 
         info.default_tensor_split[id] = total_vram;
         total_vram += prop.totalGlobalMem;

@@ -161,22 +161,22 @@ static bool eval_ids(struct llama_context * ctx_llama, std::vector<llama_token> 
     //std::vector<llama_token> tokens;
     //tokens.push_back(id);
 
-    printf("*****eval_ids : ");
-    for(int i = 0; i < ids.size(); i++){
-        printf("%d ", ids[i]);
-    }
-    printf("\n");
+    //printf("*****eval_ids : ");
+    //for(int i = 0; i < ids.size(); i++){
+    //    printf("%d ", ids[i]);
+    //}
+    //printf("\n");
     return eval_tokens(ctx_llama, ids, n_batch, n_past);
 }
 
 static bool eval_string(struct llama_context * ctx_llama, const char* str, int n_batch, int * n_past, bool add_bos){
     std::string              str2     = str;
     std::vector<llama_token> embd_inp = ::llama_tokenize(ctx_llama, str2, add_bos, true);
-    printf("*****eval_string : ");
-    for(int i = 0; i < embd_inp.size(); i++){
-        printf("%d ", embd_inp[i]);
-    }
-    printf("\n");
+    //printf("*****eval_string : ");
+    //for(int i = 0; i < embd_inp.size(); i++){
+    //    printf("%d ", embd_inp[i]);
+    //}
+    //printf("\n");
     return eval_tokens(ctx_llama, embd_inp, n_batch, n_past);
 }
 
@@ -253,7 +253,8 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
     LOG_TEE("%s: image token past: %d\n", __func__, n_past);
 
     //std::string fname = "D:\\project\\minivpm-v-lenovo31-v3-sft\\model_skip\\sp.raw";
-    std::string fname = "/DATA/disk0/zkh/job_839830_ckpt_1200/model_skip/sp.raw";
+    //std::string fname = "/DATA/disk0/zkh/1114/model_skip/sp.raw";
+    std::string fname = "/DATA/disk1/zhangkaihuo/Lenovo_V2_5/model_skip/sp.raw";
     auto file = fopen(fname.c_str(), "rb");
     if (file == NULL) {
         LOG_TEE("%s: can't read file %s\n", __func__, fname.c_str());
@@ -281,12 +282,12 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
     }
     fclose(file);
 
-    printf("after load sp.raw\n");
+    //printf("after load sp.raw\n");
     process_eval_image_embed_l(ctx_llava, embeds, params->n_batch, &n_past, idx++, 0, buffer);
-    printf("after process_eval_image_embed_l\n");
+    //printf("after process_eval_image_embed_l\n");
     if (num_image_embeds > 1) {
         size_t num_image_embeds_col = clip_uhd_num_image_embeds_col(ctx_llava->ctx_clip);
-        printf("num_image_embeds = %d, num_image_embeds_col = %d\n", num_image_embeds, num_image_embeds_col); 
+        //printf("num_image_embeds = %d, num_image_embeds_col = %d\n", num_image_embeds, num_image_embeds_col); 
         for (size_t i = 0; i < (num_image_embeds-1)/num_image_embeds_col; ++i) {
             for (size_t j = 0; j < num_image_embeds_col; ++j) {
                 process_eval_image_embed_l(ctx_llava, embeds, params->n_batch, &n_past, idx++, 1, buffer);
@@ -305,7 +306,7 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
 
 static bool process_prompt(int type, struct llava_context * ctx_llava, gpt_params * params, int &n_past, std::string prompt = ""){
     int has_minicpmv_projector = clip_is_minicpmv(ctx_llava->ctx_clip);
-    printf("#####has_minicpmv_projector = %d, type=%d\n", has_minicpmv_projector, type);
+    //printf("#####has_minicpmv_projector = %d, type=%d\n", has_minicpmv_projector, type);
     if (type==0) {
         std::string system_prompt;
         if (has_minicpmv_projector == 1) {
@@ -511,9 +512,9 @@ static void beam_search_callback(void * callback_data_ptr, llama_beams_state bea
         // tokens = beams_state.beam_views[3].tokens;
         // std::copy(tokens, tokens + n, callback_data.response3.end() - n);
         //printf("%zu", n);
-        for(int i = 0; i < n; i++){
-            std::cout << llama_token_to_piece(callback_data.ctx, tokens[i]) << std::flush;
-        }
+        //for(int i = 0; i < n; i++){
+        //    std::cout << llama_token_to_piece(callback_data.ctx, tokens[i]) << std::flush;
+        //}
     }
     //fflush(stdout);
 #if 1 // DEBUG: print current beams for this iteration
@@ -638,10 +639,10 @@ int main(int argc, char ** argv) {
         printf("\n");
         llama_print_timings(ctx_llava->ctx_llama);
 
-        for(int i = 0; i < g_ids.size(); i++){
-            std::cout << g_ids[i] << " ";
-        }
-        std::cout << std::endl;
+        //for(int i = 0; i < g_ids.size(); i++){
+        //    std::cout << g_ids[i] << " ";
+        //}
+        //std::cout << std::endl;
 
         ctx_llava->model = NULL;
         llava_free(ctx_llava);
