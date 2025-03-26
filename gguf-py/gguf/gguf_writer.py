@@ -22,6 +22,7 @@ from .constants import (
     RopeScalingType,
     PoolingType,
     TokenType,
+    GGML_QUANT_SIZES
 )
 
 
@@ -30,6 +31,13 @@ class WriterState(Enum):
     HEADER  = auto()
     KV_DATA = auto()
     TI_DATA = auto()
+
+def quant_shape_from_byte_shape(shape: Sequence[int], quant_type: GGMLQuantizationType) -> tuple[int, ...]:
+    block_size, type_size = GGML_QUANT_SIZES[quant_type]
+    if shape[-1] % type_size != 0:
+        raise ValueError(f"Quantized tensor bytes per row ({shape[-1]}) is not a multiple of {quant_type.name} type size ({type_size})")
+    return (*shape[:-1], shape[-1] // type_size * block_size)
+
 
 
 class GGUFWriter:
@@ -202,8 +210,6 @@ class GGUFWriter:
         self.ti_data += encoded_name
         n_dims = len(tensor_shape)
         self.ti_data += self._pack("I", n_dims)
-        for i in range(n_dims):
-            self.ti_data += self._pack("Q", tensor_shape[n_dims - 1 - i])
         if raw_dtype is None:
             if tensor_dtype == np.float16:
                 dtype = GGMLQuantizationType.F16
@@ -223,6 +229,11 @@ class GGUFWriter:
                 raise ValueError("Only F16, F32, F64, I8, I16, I32, I64 tensors are supported for now")
         else:
             dtype = raw_dtype
+            if tensor_dtype == np.uint8:
+                tensor_shape = quant_shape_from_byte_shape(tensor_shape, raw_dtype)
+                print('tensor_shape', tensor_shape)
+        for i in range(n_dims):
+            self.ti_data += self._pack("Q", tensor_shape[n_dims - 1 - i])
         self.ti_data += self._pack("I", dtype)
         self.ti_data += self._pack("Q", self.offset_tensor)
         self.offset_tensor += GGUFWriter.ggml_pad(tensor_nbytes, self.data_alignment)
@@ -232,6 +243,7 @@ class GGUFWriter:
         self, name: str, tensor: np.ndarray[Any, Any], raw_shape: Sequence[int] | None = None,
         raw_dtype: GGMLQuantizationType | None = None,
     ) -> None:
+        print('tensor_dtype', tensor.dtype)
         if self.endianess == GGUFEndian.BIG:
             tensor.byteswap(inplace=True)
         if self.use_temp_file and self.temp_file is None:
