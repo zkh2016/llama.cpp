@@ -324,6 +324,9 @@ static bool process_prompt(int type, struct llava_context * ctx_llava, gpt_param
         else if (has_minicpmv_projector == 6) {
             system_prompt = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n";
         }
+        else if (has_minicpmv_projector == 7) {
+            system_prompt = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n";
+        }
         return eval_string(ctx_llava->ctx_llama, system_prompt.c_str(), params->n_batch, &n_past, false);
     }
     else if (type==1) {
@@ -350,6 +353,9 @@ static bool process_prompt(int type, struct llava_context * ctx_llava, gpt_param
             return eval_string(ctx_llava->ctx_llama, "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n", params->n_batch, &n_past, false);
         }
         else if (has_minicpmv_projector == 6) {
+            return eval_string(ctx_llava->ctx_llama, "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n", params->n_batch, &n_past, false);
+        }
+        else if (has_minicpmv_projector == 7) {
             return eval_string(ctx_llava->ctx_llama, "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n", params->n_batch, &n_past, false);
         }
     }

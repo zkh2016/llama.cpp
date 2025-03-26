@@ -670,6 +670,9 @@ static ggml_cgraph * clip_image_build_graph(clip_ctx * ctx, const clip_image_f32
         else if (ctx->minicpmv_version == 6) {
             pos_embed = ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, 4096, pos_w * pos_h, 1);
         }
+        else if (ctx->minicpmv_version == 7) {
+            pos_embed = ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, 3072, pos_w * pos_h, 1);
+        }
         ggml_set_name(pos_embed, "pos_embed");
         ggml_set_input(pos_embed);
     }
@@ -1009,6 +1012,11 @@ static ggml_cgraph * clip_image_build_graph(clip_ctx * ctx, const clip_image_f32
                     hidden_size = 4096;
                     n_head = hidden_size/d_head;
                     num_query = 128;
+                }
+                else if (ctx->minicpmv_version == 7) {
+                    hidden_size = 3072;
+                    n_head = hidden_size/d_head;
+                    num_query = 64;
                 }
 
                 struct ggml_tensor * Q = ggml_add(ctx0, ggml_mul_mat(ctx0, model.mm_model_attn_q_w, q), model.mm_model_attn_q_b);
@@ -2682,6 +2690,9 @@ int clip_n_patches(const struct clip_ctx * ctx) {
         else if (ctx->minicpmv_version == 6) {
             n_patches = 128;
         }
+        else if (ctx->minicpmv_version == 7) {
+            n_patches = 64;
+        }
     }
 
     return n_patches;
@@ -2927,6 +2938,9 @@ bool clip_image_batch_encode(clip_ctx * ctx, const int n_threads, const clip_ima
             else if (ctx->minicpmv_version == 6) {
                 embed_dim = 4096;
             }
+            else if (ctx->minicpmv_version == 7) {
+                embed_dim = 3072;
+            }
             auto pos_embed_t = get_2d_sincos_pos_embed(embed_dim, std::make_pair(pos_w, pos_h));
 
             float * pos_embed_data = (float *)malloc(ggml_nbytes(pos_embed));
@@ -3156,6 +3170,9 @@ int clip_n_mmproj_embd(const struct clip_ctx * ctx) {
         }
         else if (ctx->minicpmv_version == 6) {
             return 4096;
+        }
+        else if (ctx->minicpmv_version == 7) {
+            return 3072;
         }
     }
 
