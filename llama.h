@@ -453,7 +453,7 @@ extern "C" {
     // will be applied on top of the previous one
     // Returns 0 on success
     LLAMA_API int32_t llama_model_apply_lora_from_file(
-            const struct llama_model * model,
+            struct llama_model * model,
                           const char * path_lora,
                                float   scale,
                           const char * path_base_model,

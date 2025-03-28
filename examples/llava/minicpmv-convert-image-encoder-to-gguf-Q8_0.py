@@ -742,6 +742,10 @@ def _replace_name_resampler(s, v):
         }
     return {s: v}
 
+from gptq2gguf import convert
+
+resampler_gptq_encodings = convert(gptq_model, "./gptq2gguf_out", "resampler")
+
 if has_minicpmv_projector:
     projector = torch.load(args.minicpmv_projector)
     new_state_dict = {}
@@ -772,9 +776,9 @@ if has_minicpmv_projector:
                 ftype_cur = 0
 
         if ".weight" in name and ("attn" in name or "ffn" in name):
-            assert old_name in gptq_encodings, f"{old_name} {gptq_encodings.keys()}"
+            assert old_name in resampler_gptq_encodings, f"{old_name} {resampler_gptq_encodings.keys()}"
             group_size = 32
-            weight_encoding = gptq_encodings[old_name]
+            weight_encoding = resampler_gptq_encodings[old_name]
             out_channels, in_channels = data.shape
             #print('tensor', data.shape)
             #print('encoding', weight_encoding.weight.shape)
@@ -828,7 +832,6 @@ def _replace_name(s, v):
 
     return {s: v}
 
-from gptq2gguf import convert
 
 
 def roundup(x, y):
@@ -836,7 +839,7 @@ def roundup(x, y):
 
 
 state_dict = model.state_dict()
-gptq_encodings = convert(gptq_model, "./gptq2gguf_out", "vpm")
+vpm_gptq_encodings = convert(gptq_model, "./gptq2gguf_out", "resampler")
 new_state_dict = {}
 for k, v in state_dict.items():
     kvs = _replace_name(k, v)
@@ -878,9 +881,9 @@ for name, data in state_dict.items():
             ftype_cur = 0
 
     if ".weight" in name and ("attn" in name or "ffn" in name):
-        assert old_name in gptq_encodings, f"{old_name} {gptq_encodings.keys()}"
+        assert old_name in vpm_gptq_encodings, f"{old_name} {vpm_gptq_encodings.keys()}"
         group_size = 32
-        weight_encoding = gptq_encodings[old_name]
+        weight_encoding = vpm_gptq_encodings[old_name]
         out_channels, in_channels = data.shape
         #print('tensor', data.shape)
         #print('encoding', weight_encoding.weight.shape)

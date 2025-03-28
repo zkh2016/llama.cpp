@@ -13,6 +13,7 @@
 #define MAX_FREE_BLOCKS 256
 
 //#define GGML_ALLOCATOR_DEBUG
+//#define NDEBUG
 
 //#define AT_PRINTF(...) fprintf(stderr, __VA_ARGS__)
 #define AT_PRINTF(...)
@@ -777,7 +778,7 @@ static bool ggml_gallocr_node_needs_realloc(ggml_gallocr_t galloc, struct ggml_t
 static bool ggml_gallocr_needs_realloc(ggml_gallocr_t galloc, struct ggml_cgraph * graph) {
     if (galloc->n_nodes != graph->n_nodes) {
 #ifndef NDEBUG
-        fprintf(stderr, "%s: graph has different number of nodes\n", __func__);
+        fprintf(stderr, "%s: graph has different number of nodes:%d %d\n", __func__, galloc->n_nodes, graph->n_nodes);
 #endif
         return true;
     }

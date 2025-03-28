@@ -11,6 +11,7 @@
 
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define NDEBUG
 
 // backend buffer type
 

@@ -26,8 +26,8 @@ case "${cmd}" in
 #
 #no skip 
     no_skip)
-        #set -x
-        ./build/bin/minicpmv-cli -m ${model} --mmproj ${mmproj} -c 8192 --temp ${temperature} --top-p ${top_p} --top-k 100 --repeat-penalty 1.05 -p "Please extract information from the PPT image given you and provide a brief description." --image ${image} -ngl 100 --skip-layers 8 --seed ${seed}
+        set -x
+        ./build/bin/minicpmv-cli -m ${model} --mmproj ${mmproj} -c 8192 --temp ${temperature} --top-p ${top_p} --top-k 100 --repeat-penalty 1.05 -p "Please extract information from the PPT image given you and provide a brief description." --image ${image} -ngl 100 --seed ${seed}
         ;;
     fp_no_skip)
         #set -x
@@ -36,13 +36,13 @@ case "${cmd}" in
 
 #int8 vit and skip
     vit_int8)
-        #mmproj=/DATA/disk1/zhangkaihuo/Lenovo_V2_5/mmproj-model-Q8_0_M.gguf
-        mmproj=/DATA/disk1/zhangkaihuo/project/lenovo/llama.cpp/mmproj-model-Q8_0_M.gguf
+        mmproj=/DATA/disk1/zhangkaihuo/Lenovo_V2_5/mmproj-model-Q8_0_M.gguf
+        #mmproj=/DATA/disk1/zhangkaihuo/project/lenovo/llama.cpp/mmproj-model-Q8_0_M.gguf
         set -x
         ./build/bin/minicpmv-cli -m ${model} --mmproj ${mmproj} --skip-model ${skip_model} -c 8192 --temp ${temperature} --top-p ${top_p} --top-k 100 --repeat-penalty 1.05 -p "Please extract information from the PPT image given you and provide a brief description." --image ${image} -ngl 100 --skip-layers 8 --seed ${seed} --log-disable
         ;;
     lora)
         set -x
-        ./build/bin/minicpmv-cli -m ${model} --mmproj ${mmproj} -c 8192 --temp ${temperature} --top-p ${top_p} --top-k 100 --repeat-penalty 1.05 -p "Please extract information from the PPT image given you and provide a brief description." --image ${image} -ngl 100 --skip-layers 8 --seed ${seed} --lora ${lora_model} --log-disable
+        ./build/bin/minicpmv-cli -m ${model} --mmproj ${mmproj} -c 8192 --temp ${temperature} --top-p ${top_p} --top-k 100 --repeat-penalty 1.05 -p "Please extract information from the PPT image given you and provide a brief description." --image ${image} -ngl 100 --skip-layers 8 --seed ${seed} --lora ${lora_model} -t 1 
         ;;
 esac

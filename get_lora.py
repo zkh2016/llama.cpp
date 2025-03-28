@@ -5,6 +5,11 @@ import torch
 
 import re
 
+def trans(key, value):
+    if 'lora_B' in key:
+        return value.t().contiguous()
+    return value
+
 def replace_lora_key(original_key, value):
     """将 xxx_lora.lora_A 结构替换为 xxx.lora_A.weight"""
     key = re.sub(
@@ -40,7 +45,8 @@ state_dict = model.state_dict()
 # 3. 过滤包含'lora'的key
 prefix = "llm."
 lora_weights = {
-    replace_lora_key(key, value): value.t().contiguous()
+    #replace_lora_key(key, value): value.t().contiguous()
+    replace_lora_key(key, value): trans(key, value)
     for key, value in state_dict.items() 
     if "lora" in key.lower()  # 不区分大小写匹配lora
 }
