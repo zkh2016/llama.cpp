@@ -6755,7 +6755,7 @@ struct llm_build_context {
     }
 
     struct ggml_tensor* build_lora_mm(ggml_context* ctx, ggml_tensor * w, ggml_tensor * cur) {
-        if(true)
+        if(false)
         {
             ggml_tensor * res = ggml_mul_mat(ctx0, w, cur);
             return res;

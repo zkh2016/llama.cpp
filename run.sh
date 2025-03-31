@@ -43,6 +43,6 @@ case "${cmd}" in
         ;;
     lora)
         set -x
-        ./build/bin/minicpmv-cli -m ${model} --mmproj ${mmproj} -c 8192 --temp ${temperature} --top-p ${top_p} --top-k 100 --repeat-penalty 1.05 -p "Please extract information from the PPT image given you and provide a brief description." --image ${image} -ngl 100 --skip-layers 8 --seed ${seed} --lora ${lora_model} -t 1 
+        ./build/bin/minicpmv-cli -m ${model} --mmproj ${mmproj} -c 8192 --temp ${temperature} --top-p ${top_p} --top-k 100 --repeat-penalty 1.05 -p "Please extract information from the PPT image given you and provide a brief description." --image ${image} -ngl 100 --skip-layers 8 --seed ${seed} --lora ${lora_model} --log-disable -t 1 
         ;;
 esac
