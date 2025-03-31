@@ -2148,8 +2148,6 @@ struct lora_meta {
         this->loraA = a;
         this->loraB = b;
         this->scale = scale;
-        //printf("loraA: %d %d %d %d\n", loraA->ne[0], loraA->ne[1], loraA->ne[2], loraA->ne[3]);
-        //printf("loraB: %d %d %d %d\n", loraB->ne[0], loraB->ne[1], loraB->ne[2], loraB->ne[3]);
     }
 };
 
@@ -14879,7 +14877,7 @@ static int llama_apply_lora_from_file_internal(
         ggml_backend_free(backend_cpu);
         return 1;
     }
-    //model.ctxs.push_back(lora_ctx);
+    model.ctxs.push_back(lora_ctx);
     for (const auto & it : model.tensors_by_name) {
         const std::string & base_name = it.first;
         ggml_tensor * model_t = it.second;
@@ -14955,28 +14953,28 @@ static int llama_apply_lora_from_file_internal(
         //    return 1;
         //}
 
-        auto build_lora_graph = [&]() {
-            // w = w + BA*s
-            ggml_tensor * BA = ggml_mul_mat(lora_ctx, loraA, loraB);
-            ggml_set_name(BA, "BA");
+        //auto build_lora_graph = [&]() {
+        //    // w = w + BA*s
+        //    ggml_tensor * BA = ggml_mul_mat(lora_ctx, loraA, loraB);
+        //    ggml_set_name(BA, "BA");
 
-            if (scaling != 1.0f) {
-                BA = ggml_scale(lora_ctx, BA, scaling);
-                ggml_set_name(BA, "BA_scaled");
-            }
+        //    if (scaling != 1.0f) {
+        //        BA = ggml_scale(lora_ctx, BA, scaling);
+        //        ggml_set_name(BA, "BA_scaled");
+        //    }
 
-            ggml_tensor * r;
-            r = ggml_add_inplace(lora_ctx, base_t, BA);
-            ggml_set_name(r, "r_add");
+        //    ggml_tensor * r;
+        //    r = ggml_add_inplace(lora_ctx, base_t, BA);
+        //    ggml_set_name(r, "r_add");
 
-            if (base_t->type != model_t->type) {
-                // convert the result to the model type
-                r = ggml_cast(lora_ctx, r, model_t->type);
-                ggml_set_name(r, "r_cast");
-            }
+        //    if (base_t->type != model_t->type) {
+        //        // convert the result to the model type
+        //        r = ggml_cast(lora_ctx, r, model_t->type);
+        //        ggml_set_name(r, "r_cast");
+        //    }
 
-            return r;
-        };
+        //    return r;
+        //};
 
         //ggml_cgraph * gf = ggml_new_graph(lora_ctx);
         //ggml_tensor * r = build_lora_graph();
