@@ -6765,8 +6765,8 @@ struct llm_build_context {
             //printf("build lora_mm, %d %d\n", lw.loraA->ne[0], lw.loraA->ne[1]); 
             ggml_tensor * res = ggml_mul_mat(ctx, w, cur);
             ggml_tensor * ab_cur = ggml_mul_mat(
-                    ctx,  lw.loraB,
-                    ggml_mul_mat(ctx, lw.loraA, cur)
+                    ctx,  lw.loraB,  //loraB(1024, 32)
+                    ggml_mul_mat(ctx, lw.loraA, cur) //loraA(32, 3072)
                     );
 
             ab_cur = ggml_scale(ctx, ab_cur, lw.scale);
@@ -6806,6 +6806,159 @@ struct llm_build_context {
 
         //return res;
     }
+// if max_alibi_bias > 0 then apply ALiBi
+struct ggml_tensor * llm_build_kqv_inner(
+        struct ggml_context * ctx,
+          const llama_model & model,
+        const llama_hparams & hparams,
+       const llama_kv_cache & kv,
+         struct ggml_cgraph * graph,
+         struct ggml_tensor * wo,
+         struct ggml_tensor * wo_b,
+         struct ggml_tensor * q_cur,
+         struct ggml_tensor * kq_mask,
+         struct ggml_tensor * kq_pos,
+                    int64_t   n_ctx,
+                    int32_t   n_tokens,
+                    int32_t   n_kv,
+                    float     kq_scale,
+         const llm_build_cb & cb,
+                    int       il) {
+    const int64_t n_head        = hparams.n_head;
+    const int64_t n_head_kv     = hparams.n_head_kv;
+    const int64_t n_embd_head_k = hparams.n_embd_head_k;
+    const int64_t n_embd_k_gqa  = hparams.n_embd_k_gqa();
+    const int64_t n_embd_head_v = hparams.n_embd_head_v;
+
+    struct ggml_tensor * q = ggml_permute(ctx, q_cur, 0, 2, 1, 3);
+    cb(q, "q", il);
+
+    struct ggml_tensor * k =
+        ggml_view_3d(ctx, kv.k_l[il],
+                n_embd_head_k, n_kv, n_head_kv,
+                ggml_row_size(kv.k_l[il]->type, n_embd_k_gqa),
+                ggml_row_size(kv.k_l[il]->type, n_embd_head_k),
+                0);
+    cb(k, "k", il);
+
+    struct ggml_tensor * kq = ggml_mul_mat(ctx, k, q);
+    cb(kq, "kq", il);
+
+    if (model.arch == LLM_ARCH_PHI2) {
+        // for this arch, we need to perform the KQ multiplication with F32 precision, otherwise we get NaNs
+        // ref: https://github.com/ggerganov/llama.cpp/pull/4490#issuecomment-1859055847
+        ggml_mul_mat_set_prec(kq, GGML_PREC_F32);
+    }
+
+    if (model.arch == LLM_ARCH_GROK) {
+        // need to do the following:
+        // multiply by attn_output_multiplyer of 0.08838834764831845
+        // and then :
+        // kq = 30 * tanh(kq / 30)
+        // before the softmax below
+
+        //try from phi2
+        //ggml_mul_mat_set_prec(kq, GGML_PREC_F32);
+
+        kq = ggml_tanh(ctx, ggml_scale(ctx, kq, 0.08838834764831845f/30.0f));
+        kq = ggml_scale(ctx, kq, 30);
+    }
+
+#if defined(GGML_USE_KOMPUTE)
+#pragma message("TODO: ALiBi support in ggml_soft_max_ext is not implemented for Kompute")
+#pragma message("      Falling back to ggml_alibi(). Will become an error in Mar 2024")
+#pragma message("ref:  https://github.com/ggerganov/llama.cpp/pull/5488")
+    if (hparams.f_max_alibi_bias > 0.0f) {
+        kq = ggml_scale(ctx, kq, kq_scale);
+        cb(kq, "kq_scaled", il);
+
+        kq = ggml_alibi(ctx, kq, /*n_past*/ 0, n_head, hparams.f_max_alibi_bias);
+        cb(kq, "kq_scaled_alibi", il);
+
+        kq = ggml_add(ctx, kq, kq_mask);
+        cb(kq, "kq_masked", il);
+
+        kq = ggml_soft_max(ctx, kq);
+        cb(kq, "kq_soft_max", il);
+    } else
+#endif
+    {
+        kq = ggml_soft_max_ext(ctx, kq, kq_mask, kq_pos, kq_scale, hparams.f_max_alibi_bias);
+        cb(kq, "kq_soft_max_ext", il);
+    }
+
+    GGML_ASSERT(kv.size == n_ctx);
+
+    // split cached v into n_head heads
+    struct ggml_tensor * v =
+        ggml_view_3d(ctx, kv.v_l[il],
+                n_kv, n_embd_head_v, n_head_kv,
+                ggml_element_size(kv.v_l[il])*n_ctx,
+                ggml_element_size(kv.v_l[il])*n_ctx*n_embd_head_v,
+                0);
+    cb(v, "v", il);
+
+    struct ggml_tensor * kqv = ggml_mul_mat(ctx, v, kq);
+    cb(kqv, "kqv", il);
+
+    struct ggml_tensor * kqv_merged = ggml_permute(ctx, kqv, 0, 2, 1, 3);
+    cb(kqv_merged, "kqv_merged", il);
+
+    struct ggml_tensor * cur = ggml_cont_2d(ctx, kqv_merged, n_embd_head_k*n_head, n_tokens);
+    cb(cur, "kqv_merged_cont", il);
+
+    ggml_build_forward_expand(graph, cur);
+
+    //cur = ggml_mul_mat(ctx, wo, cur);
+    cur = build_lora_mm(ctx, wo, cur);
+    if (wo_b) {
+        cb(cur, "kqv_wo", il);
+    }
+
+    if (wo_b) {
+        cur = ggml_add(ctx, cur, wo_b);
+    }
+
+    return cur;
+}
+
+struct ggml_tensor * llm_build_kv_inner(
+        struct ggml_context * ctx,
+          const llama_model & model,
+        const llama_hparams & hparams,
+       const llama_kv_cache & kv,
+         struct ggml_cgraph * graph,
+         struct ggml_tensor * wo,
+         struct ggml_tensor * wo_b,
+         struct ggml_tensor * k_cur,
+         struct ggml_tensor * v_cur,
+         struct ggml_tensor * q_cur,
+         struct ggml_tensor * kq_mask,
+         struct ggml_tensor * kq_pos,
+                    int64_t   n_ctx,
+                    int32_t   n_tokens,
+                    int32_t   kv_head,
+                    int32_t   n_kv,
+                    float     kq_scale,
+         const llm_build_cb & cb,
+                    int       il) {
+
+    // these nodes are added to the graph together so that they are not reordered
+    // by doing so, the number of splits in the graph is reduced
+    ggml_build_forward_expand(graph, q_cur);
+    ggml_build_forward_expand(graph, k_cur);
+    ggml_build_forward_expand(graph, v_cur);
+
+    llm_build_kv_store(ctx, hparams, kv, graph, k_cur, v_cur, n_ctx, n_tokens, kv_head, cb, il);
+
+    struct ggml_tensor * cur;
+
+    cur  = llm_build_kqv_inner(ctx, model, hparams, kv, graph, wo, wo_b,
+            q_cur, kq_mask, kq_pos, n_ctx, n_tokens, n_kv, kq_scale, cb, il);
+    cb(cur, "kqv_out", il);
+
+    return cur;
+}
 
     struct ggml_tensor * llm_build_ffn_inner(
             struct ggml_context * ctx,
@@ -6992,7 +7145,7 @@ struct llm_build_context {
                 );
                 cb(Kcur, "Kcur", il);
 
-                cur = llm_build_kv(ctx0, *m, hparams, kv_self, gf,
+                cur = llm_build_kv_inner(ctx0, *m, hparams, kv_self, gf,
                         m->layers[local_il].wo, m->layers[local_il].bo,
                         Kcur, Vcur, Qcur, KQ_mask, nullptr, n_ctx, n_tokens, kv_head, n_kv, 1.0f/sqrtf(float(n_embd_head)), cb, il);
             }
@@ -14867,7 +15020,7 @@ static int llama_apply_lora_from_file_internal(
 
     std::vector<no_init<uint8_t>> read_buf;
     ggml_init_params lora_init_params = {
-        /* .mem_size   */ ggml_tensor_overhead()*128*model.tensors_by_name.size()*2 + ggml_graph_overhead(),
+        /* .mem_size   */ ggml_tensor_overhead()*128*model.tensors_by_name.size(),
         /* .mem_buffer */ nullptr,
         /* .no_alloc   */ true,
     };
@@ -14922,6 +15075,19 @@ static int llama_apply_lora_from_file_internal(
             fin.seek(tensor_meta.offset, SEEK_SET);
             fin.read_raw(read_buf.data(), ggml_nbytes(tensor));
             ggml_backend_tensor_set(tensor, read_buf.data(), 0, read_buf.size());
+            {
+                std::string path = "lora_weight/" + tensor_meta.name + ".txt";
+                FILE *fp = fopen(path.c_str(), "w");
+                fprintf(fp, "%d %d\n", tensor_meta.ne[0], tensor_meta.ne[1]);
+                float* data = (float*)read_buf.data();
+                for(int i = 0; i < tensor_meta.ne[1]; i++){
+                    for(int j = 0; j < tensor_meta.ne[0]; j++){
+                        fprintf(fp, "%f, ", data[i * tensor_meta.ne[0] + j]);
+                    }
+                    fprintf(fp, "\n");
+                }
+                fclose(fp);
+            }
         };
         load_tensor(metaA, loraA);
         load_tensor(metaB, loraB);

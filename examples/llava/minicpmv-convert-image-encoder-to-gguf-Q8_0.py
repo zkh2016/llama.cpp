@@ -744,7 +744,7 @@ def _replace_name_resampler(s, v):
 
 from gptq2gguf import convert
 
-resampler_gptq_encodings = convert(gptq_model, "./gptq2gguf_out", "resampler")
+#resampler_gptq_encodings = convert(gptq_model, "./gptq2gguf_out", "resampler")
 
 if has_minicpmv_projector:
     projector = torch.load(args.minicpmv_projector)
@@ -775,7 +775,8 @@ if has_minicpmv_projector:
                 data = data.astype(np.float32)
                 ftype_cur = 0
 
-        if ".weight" in name and ("attn" in name or "ffn" in name):
+        #if ".weight" in name and ("attn" in name or "ffn" in name):
+        if False:
             assert old_name in resampler_gptq_encodings, f"{old_name} {resampler_gptq_encodings.keys()}"
             group_size = 32
             weight_encoding = resampler_gptq_encodings[old_name]
@@ -839,7 +840,7 @@ def roundup(x, y):
 
 
 state_dict = model.state_dict()
-vpm_gptq_encodings = convert(gptq_model, "./gptq2gguf_out", "resampler")
+vpm_gptq_encodings = convert(gptq_model, "./gptq2gguf_out", "vpm")
 new_state_dict = {}
 for k, v in state_dict.items():
     kvs = _replace_name(k, v)
