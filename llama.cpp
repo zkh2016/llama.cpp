@@ -6759,9 +6759,18 @@ struct llm_build_context {
             return res;
         }
 
+        static std::map<std::string, int> counts;
         auto it = model.lora_map.find(w->name);
+        assert(it != model.lora_map.end());
         if(it != model.lora_map.end()){
+            if(counts.find(w->name) == counts.end()){
+                counts[w->name] = 0;
+            }else{
+                counts[w->name] += 1;
+            }
+            assert(counts[w->name] <= 1);
             const auto& lw = it->second;
+            assert(lw.scale == 2.0);
             //printf("build lora_mm, %d %d\n", lw.loraA->ne[0], lw.loraA->ne[1]); 
             ggml_tensor * res = ggml_mul_mat(ctx, w, cur);
             ggml_tensor * ab_cur = ggml_mul_mat(
@@ -6911,6 +6920,7 @@ struct ggml_tensor * llm_build_kqv_inner(
 
     //cur = ggml_mul_mat(ctx, wo, cur);
     cur = build_lora_mm(ctx, wo, cur);
+    // printf("wo->name = %s\n", wo->name);
     if (wo_b) {
         cb(cur, "kqv_wo", il);
     }
@@ -7136,7 +7146,7 @@ struct ggml_tensor * llm_build_kv_inner(
                     n_rot, rope_type, 0, n_orig_ctx, freq_base, freq_scale,
                     ext_factor, attn_factor, beta_fast, beta_slow
                 );
-                cb(Qcur, "Qcur", il);
+                cb(Qcur, "Qcur_rope", il);
 
                 Kcur = ggml_rope_custom(
                     ctx0, ggml_reshape_3d(ctx0, Kcur, n_embd_head, n_head_kv, n_tokens), inp_pos,
@@ -11377,9 +11387,12 @@ static int llama_decode_internal(
         // after deprecating the llama_eval calls, these will be removed
         if (u_batch.pos == nullptr) {
             pos.resize(n_tokens);
+            // printf("pos: ");
             for (uint32_t i = 0; i < n_tokens; i++) {
                 pos[i] = u_batch.all_pos_0 + i*u_batch.all_pos_1;
+                // printf("%d ", pos[i]);
             }
+            // printf("\n");
 
             u_batch.pos = pos.data();
         }
@@ -15031,6 +15044,7 @@ static int llama_apply_lora_from_file_internal(
         return 1;
     }
     model.ctxs.push_back(lora_ctx);
+    auto buf_type = ggml_backend_get_default_buffer_type(backend_cpu);
     for (const auto & it : model.tensors_by_name) {
         const std::string & base_name = it.first;
         ggml_tensor * model_t = it.second;
@@ -15049,134 +15063,40 @@ static int llama_apply_lora_from_file_internal(
         ggml_set_name(loraA, metaA.name.c_str());
         ggml_set_name(loraB, metaB.name.c_str());
 
-        ggml_tensor * base_t;
-        if (ml) {
-            if (!ml->get_tensor_meta(base_name.c_str())) {
-                LLAMA_LOG_ERROR("%s: error: tensor '%s' not found in base model\n", __func__, base_name.c_str());
-                return 1;
-            }
-            base_t = ggml_dup_tensor(lora_ctx, ml->get_tensor_meta(base_name.c_str()));
-        } else {
-            base_t = ggml_dup_tensor(lora_ctx, model_t);
-        }
-        ggml_set_name(base_t, base_name.c_str());
+        struct lora_meta lm(loraA, loraB, scaling);
+        model.lora_map[base_name] = lm;
+    }
 
-        // allocate in backend buffer
-        auto buf_type = ggml_backend_get_default_buffer_type(backend_cpu);
-        ggml_backend_buffer_t lora_buf = ggml_backend_alloc_ctx_tensors_from_buft(lora_ctx, buf_type);
-        if (lora_buf == nullptr) {
-            LLAMA_LOG_ERROR("%s: error: failed to allocate lora tensors\n", __func__);
-            return 1;
-        }
+    ggml_backend_buffer_t lora_buf = ggml_backend_alloc_ctx_tensors_from_buft(lora_ctx, buf_type);
+    // allocate in backend buffer
+    if (lora_buf == nullptr) {
+        LLAMA_LOG_ERROR("%s: error: failed to allocate lora tensors\n", __func__);
+        return 1;
+    }
+    LLAMA_LOG_INFO("%s: %10s buffer size = %8.2f MiB\n", __func__, ggml_backend_buffer_name(lora_buf), ggml_backend_buffer_get_size(lora_buf)/1024.0/1024.0);
 
-        // load tensor data
-        auto load_tensor = [&read_buf, &fin](const tensor_meta & tensor_meta, ggml_tensor * tensor) {
-            read_buf.resize(ggml_nbytes(tensor));
-            fin.seek(tensor_meta.offset, SEEK_SET);
-            fin.read_raw(read_buf.data(), ggml_nbytes(tensor));
-            ggml_backend_tensor_set(tensor, read_buf.data(), 0, read_buf.size());
-            {
-                std::string path = "lora_weight/" + tensor_meta.name + ".txt";
-                FILE *fp = fopen(path.c_str(), "w");
-                fprintf(fp, "%d %d\n", tensor_meta.ne[0], tensor_meta.ne[1]);
-                float* data = (float*)read_buf.data();
-                for(int i = 0; i < tensor_meta.ne[1]; i++){
-                    for(int j = 0; j < tensor_meta.ne[0]; j++){
-                        fprintf(fp, "%f, ", data[i * tensor_meta.ne[0] + j]);
-                    }
-                    fprintf(fp, "\n");
-                }
-                fclose(fp);
-            }
-        };
-        load_tensor(metaA, loraA);
-        load_tensor(metaB, loraB);
+    // load tensor data
+    auto load_tensor = [&read_buf, &fin](const tensor_meta & tensor_meta, ggml_tensor * tensor) {
+        read_buf.resize(ggml_nbytes(tensor));
+        fin.seek(tensor_meta.offset, SEEK_SET);
+        fin.read_raw(read_buf.data(), ggml_nbytes(tensor));
+        ggml_backend_tensor_set(tensor, read_buf.data(), 0, read_buf.size());
+    };
+
+    for (const auto & it : model.tensors_by_name) {
+        const std::string & base_name = it.first;
+        if (tensor_meta_map.find(base_name + ".loraA") == tensor_meta_map.end() ||
+            tensor_meta_map.find(base_name + ".loraB") == tensor_meta_map.end()) {
+            continue;
+        }
+        auto lm = model.lora_map[base_name];
+        tensor_meta & metaA = tensor_meta_map.at(base_name + ".loraA");
+        tensor_meta & metaB = tensor_meta_map.at(base_name + ".loraB");
+        load_tensor(metaA, lm.loraA);
+        load_tensor(metaB, lm.loraB);
         {
         }
 
-        struct lora_meta lm(loraA, loraB, scaling);
-        model.lora_map[base_name] = lm;
-
-        // load base model tensor data
-        if (ml) {
-            ml->load_data_for(base_t);
-        } else {
-            ggml_backend_tensor_copy(model_t, base_t);
-        }
-
-        if (ggml_is_quantized(base_t->type) && !warned) {
-            LLAMA_LOG_WARN("%s: warning: using a lora adapter with a quantized model may result in poor quality, "
-                            "use a f16 or f32 base model with --lora-base\n", __func__);
-            warned = true;
-        }
-
-        //if (base_t->ne[0] != loraA->ne[1] || base_t->ne[1] != loraB->ne[1]) {
-        //    LLAMA_LOG_ERROR("%s: incompatible tensor dimensions (%" PRId64 " and %" PRId64 ");"
-        //                    " are you sure that this adapter is for this model?\n", __func__, base_t->ne[0], loraA->ne[1]);
-        //    ggml_free(lora_ctx);
-        //    ggml_backend_buffer_free(lora_buf);
-        //    ggml_backend_free(backend_cpu);
-        //    return 1;
-        //}
-
-        //auto build_lora_graph = [&]() {
-        //    // w = w + BA*s
-        //    ggml_tensor * BA = ggml_mul_mat(lora_ctx, loraA, loraB);
-        //    ggml_set_name(BA, "BA");
-
-        //    if (scaling != 1.0f) {
-        //        BA = ggml_scale(lora_ctx, BA, scaling);
-        //        ggml_set_name(BA, "BA_scaled");
-        //    }
-
-        //    ggml_tensor * r;
-        //    r = ggml_add_inplace(lora_ctx, base_t, BA);
-        //    ggml_set_name(r, "r_add");
-
-        //    if (base_t->type != model_t->type) {
-        //        // convert the result to the model type
-        //        r = ggml_cast(lora_ctx, r, model_t->type);
-        //        ggml_set_name(r, "r_cast");
-        //    }
-
-        //    return r;
-        //};
-
-        //ggml_cgraph * gf = ggml_new_graph(lora_ctx);
-        //ggml_tensor * r = build_lora_graph();
-        //ggml_build_forward_expand(gf, r);
-
-        //ggml_backend_buffer_t graph_buf = ggml_backend_alloc_ctx_tensors_from_buft(lora_ctx, ggml_backend_cpu_buffer_type());
-        //if (graph_buf == nullptr) {
-        //    LLAMA_LOG_ERROR("%s: error: failed to allocate graph tensors\n", __func__);
-        //    ggml_free(lora_ctx);
-        //    ggml_backend_buffer_free(lora_buf);
-        //    ggml_backend_free(backend_cpu);
-        //    return 1;
-        //}
-
-        //ggml_backend_graph_compute(backend_cpu, gf);
-
-        //ggml_backend_tensor_set(model_t, r->data, 0, ggml_nbytes(r));
-
-#if 0
-        // TODO: use scheduler with fallback to CPU for less copies between CPU and GPU
-        //ggml_backend_sched_t sched = ggml_backend_sched_new(backends.data(), backends.size(), GGML_DEFAULT_GRAPH_SIZE);
-
-        // sched compute
-        ggml_build_forward_expand(gf, build_graph());
-        ggml_backend_sched_init_measure(sched, gf);
-
-        // create the graph again, since the previous one was destroyed by the measure
-        ggml_graph_clear(gf);
-        ggml_build_forward_expand(gf, build_graph());
-        ggml_backend_sched_graph_compute(sched, gf);
-        ggml_backend_sched_free(sched);
-#endif
-
-        //ggml_backend_buffer_free(lora_buf);
-        //ggml_backend_buffer_free(graph_buf);
-        //ggml_free(lora_ctx);
 
         n_tensors++;
         if (n_tensors % 4 == 0) {

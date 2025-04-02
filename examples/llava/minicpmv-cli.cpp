@@ -326,7 +326,14 @@ static bool process_prompt(int type, struct llava_context * ctx_llava, gpt_param
             system_prompt = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n";
         }
         else if (has_minicpmv_projector == 7) {
-            system_prompt = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n";
+            system_prompt = "<|begin_of_text|><|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n";
+            /*
+            <|begin_of_text|><|start_header_id|>user<|end_header_id|>
+
+(<image>./</image>)
+Please extract information from the PPT image given you and provide a brief description.<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+            */
         }
         return eval_string(ctx_llava->ctx_llama, system_prompt.c_str(), params->n_batch, &n_past, false);
     }
@@ -420,7 +427,9 @@ static struct llava_context * minicpmv_init(gpt_params * params, const std::stri
     LOG_TEE("\n%s: llava init in %8.2f ms.\n", __func__, t_llava_init_ms);
 
     const int64_t t_process_image_start_us = ggml_time_us();
+    // printf("==process_prompt 0, n_past=%d\n", n_past);
     process_prompt(0, ctx_llava, params, n_past);
+    // printf("==proces_img_l, n_past=%d\n", n_past);
     process_image_l(ctx_llava, embeds, params, n_past);
 
     const int64_t t_process_image_end_us = ggml_time_us();
@@ -446,8 +455,11 @@ static int process_input(struct llava_context * ctx_llava, gpt_params * params, 
 static struct llama_sampling_context * llama_init(struct llava_context * ctx_llava, gpt_params * params, std::string prompt, int &n_past, bool is_first = false){
     std::string user_prompt = prompt;
     if(is_first)process_prompt(0, ctx_llava, params, n_past);
+    // printf("==process_promt 1, n_past=%d\n", n_past);
     process_prompt(1, ctx_llava, params, n_past, prompt);
+    // printf("==process_promt 2, n_past=%d\n", n_past);
     process_prompt(2, ctx_llava, params, n_past);
+    // printf("==end process_promt 2, n_past = %d\n", n_past);
 
     // generate the response
     LOG_TEE("\n");

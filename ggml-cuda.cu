@@ -2157,7 +2157,6 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
     if (dst->src[0] != nullptr && ggml_backend_buffer_is_cuda_split(dst->src[0]->buffer)) {
         ggml_cuda_set_peer_access(dst->src[1]->ne[1], ctx.device);
     }
-
     switch (dst->op) {
         case GGML_OP_REPEAT:
             ggml_cuda_op_repeat(ctx, dst);
@@ -2245,7 +2244,34 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
                 fprintf(stderr, "%s: cannot compute %s: src0->ne[3] = %" PRId64 ", src1->ne[3] = %" PRId64 " - fallback to CPU\n", __func__, dst->name, dst->src[0]->ne[3], dst->src[1]->ne[3]);
                 return false;
             } else {
+
                 ggml_cuda_mul_mat(ctx, dst->src[0], dst->src[1], dst);
+                // if(strcmp(dst->src[0]->name, "blk.0.attn_output.weight.loraA") == 0 
+                // || strcmp(dst->src[0]->name, "blk.0.attn_output.weight.loraB") == 0
+                // //|| strcmp(dst->src[0]->name, "blk.0.attn_k.weight.loraA") == 0
+                // ){
+                //     printf("==%s\n", dst->src[0]->name);
+                //     std::vector<float> tmp(10);
+                //     cudaMemcpy(tmp.data(), dst->src[0]->data, 10*sizeof(float), cudaMemcpyDeviceToHost);
+                //     for(int i = 0; i < tmp.size() && i < 10; i++){
+                //         printf("%f ", tmp[i]);
+                //     }
+                //     printf("\n");
+
+                //     std::vector<float> in(10);
+                //     cudaMemcpy(in.data(), dst->src[1]->data, 10*sizeof(float), cudaMemcpyDeviceToHost);
+                //     for(int i = 0; i < in.size() && i < 10; i++){
+                //         printf("%f ", in[i]);
+                //     }
+                //     printf("\n");
+
+                //     std::vector<float> out(10);
+                //     cudaMemcpy(out.data(), dst->data, 10*sizeof(float), cudaMemcpyDeviceToHost);
+                //     for(int i = 0; i < out.size() && i < 10; i++){
+                //         printf("%f ", out[i]);
+                //     }
+                //     printf("\n");
+                // }
             }
             break;
         case GGML_OP_MUL_MAT_ID:

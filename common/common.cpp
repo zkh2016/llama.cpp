@@ -2301,13 +2301,13 @@ std::tuple<struct llama_model *, struct llama_context *> llama_init_from_gpt_par
     }
 
     if (params.warmup) {
-        LOG("warming up the model with an empty run\n");
+        //LOG("warming up the model with an empty run\n");
 
-        std::vector<llama_token> tmp = { llama_token_bos(model), llama_token_eos(model), };
-        llama_decode(lctx, llama_batch_get_one(tmp.data(), std::min(tmp.size(), (size_t) params.n_batch), 0, 0));
-        llama_kv_cache_clear(lctx);
-        llama_synchronize(lctx);
-        llama_reset_timings(lctx);
+        //std::vector<llama_token> tmp = { llama_token_bos(model), llama_token_eos(model), };
+        //llama_decode(lctx, llama_batch_get_one(tmp.data(), std::min(tmp.size(), (size_t) params.n_batch), 0, 0));
+        //llama_kv_cache_clear(lctx);
+        //llama_synchronize(lctx);
+        //llama_reset_timings(lctx);
     }
 
     return std::make_tuple(model, lctx);

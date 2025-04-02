@@ -1,5 +1,7 @@
 #include "rope.cuh"
 
+#include <vector>
+
 struct rope_corr_dims {
     float v[4];
 };
@@ -233,6 +235,7 @@ void ggml_cuda_op_rope(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
     const float * src0_d = (const float *)src0->data;
     const float * src1_d = (const float *)src1->data;
     float * dst_d = (float *)dst->data;
+
     cudaStream_t stream = ctx.stream();
 
     GGML_ASSERT(src0->type == GGML_TYPE_F32 || src0->type == GGML_TYPE_F16);
@@ -304,5 +307,28 @@ void ggml_cuda_op_rope(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
         } else {
             GGML_ASSERT(false);
         }
+    }
+    //if(strcmp(dst->name, "Qcur_rope-0") == 0){
+    if(false){
+        printf("is glm=%d, is_neox=%d\n", is_glm, is_neox);
+        std::vector<float> tmp(10);
+        printf("%s: \n", dst->name);
+        cudaMemcpy(tmp.data(), src0_d, tmp.size() * sizeof(float), cudaMemcpyDeviceToHost);
+        for(int i = 0; i < 10; i++){
+            printf("%f ", tmp[i]);
+        }
+        printf("\n");
+        std::vector<int> pos(10);
+        cudaMemcpy(pos.data(), src1_d, tmp.size() * sizeof(float), cudaMemcpyDeviceToHost);
+        for(int i = 0; i < 10; i++){
+            printf("%d ", pos[i]);
+        }
+        printf("\n");
+        printf("%d %d %d %d\n", dst->ne[0], dst->ne[1], dst->ne[2], dst->ne[3]);
+        cudaMemcpy(tmp.data(), dst_d, tmp.size() * sizeof(float), cudaMemcpyDeviceToHost);
+        for(int i = 0; i < 10; i++){
+            printf("%f ", tmp[i]);
+        }
+        printf("\n");
     }
 }
