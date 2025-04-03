@@ -2139,6 +2139,18 @@ struct llama_vocab {
     }
 };
 
+struct lora_meta {
+    ggml_tensor* loraA;
+    ggml_tensor* loraB;
+    float scale;
+    lora_meta(){}
+    lora_meta(ggml_tensor* a, ggml_tensor *b, float scale){
+        this->loraA = a;
+        this->loraB = b;
+        this->scale = scale;
+    }
+};
+
 struct llama_model {
     e_model     type  = MODEL_UNKNOWN;
     llm_arch    arch  = LLM_ARCH_UNKNOWN;
@@ -2202,6 +2214,8 @@ struct llama_model {
 
     int64_t t_load_us = 0;
     int64_t t_start_us = 0;
+
+    std::unordered_map<std::string, lora_meta> lora_map;
 
     ~llama_model() {
         for (struct ggml_context * ctx : ctxs) {
@@ -6738,6 +6752,291 @@ struct llm_build_context {
         return lctx.inp_s_seq;
     }
 
+    struct ggml_tensor* build_lora_mm(ggml_context* ctx, ggml_tensor * w, ggml_tensor * cur) {
+        if(false)
+        {
+            ggml_tensor * res = ggml_mul_mat(ctx0, w, cur);
+            return res;
+        }
+
+        static std::map<std::string, int> counts;
+        auto it = model.lora_map.find(w->name);
+        assert(it != model.lora_map.end());
+        if(it != model.lora_map.end()){
+            // if(counts.find(w->name) == counts.end()){
+            //     counts[w->name] = 0;
+            // }else{
+            //     counts[w->name] += 1;
+            // }
+            // assert(counts[w->name] <= 1);
+            // printf("call lora mm\n");
+            const auto& lw = it->second;
+            assert(lw.scale == 2.0);
+            ggml_tensor * res = ggml_mul_mat(ctx, w, cur);
+            ggml_tensor * ab_cur = ggml_mul_mat(
+                    ctx,  lw.loraB,  //loraB(1024, 32)
+                    ggml_mul_mat(ctx, lw.loraA, cur) //loraA(32, 3072)
+                    );
+
+            ab_cur = ggml_scale(ctx, ab_cur, lw.scale);
+            res = ggml_add(ctx0, res, ab_cur);
+            return res;
+        }else{
+            ggml_tensor * res = ggml_mul_mat(ctx, w, cur);
+            return res;
+        }
+
+    }
+
+struct ggml_tensor * llm_build_ffn_inner(
+        struct ggml_context * ctx,
+         struct ggml_tensor * cur,
+         struct ggml_tensor * up,
+         struct ggml_tensor * up_b,
+         struct ggml_tensor * gate,
+         struct ggml_tensor * gate_b,
+         struct ggml_tensor * down,
+         struct ggml_tensor * down_b,
+         struct ggml_tensor * act_scales,
+            llm_ffn_op_type   type_op,
+          llm_ffn_gate_type   type_gate,
+         const llm_build_cb & cb,
+                        int   il) {
+    // struct ggml_tensor * tmp = ggml_mul_mat(ctx, up, cur);
+    struct ggml_tensor * tmp = build_lora_mm(ctx, up, cur);
+    cb(tmp, "ffn_up", il);
+
+    if (up_b) {
+        tmp = ggml_add(ctx, tmp, up_b);
+        cb(tmp, "ffn_up_b", il);
+    }
+
+    if (gate) {
+        switch (type_gate) {
+            case LLM_FFN_SEQ:
+                {
+                    // cur = ggml_mul_mat(ctx, gate, tmp);
+                    cur = build_lora_mm(ctx, gate, tmp);
+                    cb(cur, "ffn_gate", il);
+                } break;
+            case LLM_FFN_PAR:
+                {
+                    // cur = ggml_mul_mat(ctx, gate, cur);
+                    cur = build_lora_mm(ctx, gate, cur);
+                    cb(cur, "ffn_gate", il);
+                } break;
+        }
+
+        if (gate_b) {
+            cur = ggml_add(ctx, cur, gate_b);
+            cb(cur, "ffn_gate_b", il);
+        }
+    } else {
+        cur = tmp;
+    }
+
+    switch (type_op) {
+        case LLM_FFN_SILU:
+            {
+                cur = ggml_silu(ctx, cur);
+                cb(cur, "ffn_silu", il);
+            } break;
+        case LLM_FFN_GELU:
+            {
+                cur = ggml_gelu(ctx, cur);
+                cb(cur, "ffn_gelu", il);
+                if (act_scales != NULL) {
+                    cur = ggml_div(ctx, cur, act_scales);
+                    cb(cur, "ffn_act", il);
+                }
+            } break;
+        case LLM_FFN_RELU:
+            {
+                cur = ggml_relu(ctx, cur);
+                cb(cur, "ffn_relu", il);
+            } break;
+        case LLM_FFN_RELU_SQR:
+            {
+                cur = ggml_relu(ctx, cur);
+                cb(cur, "ffn_relu", il);
+
+                cur = ggml_sqr(ctx, cur);
+                cb(cur, "ffn_sqr(relu)", il);
+            } break;
+    }
+
+    if (type_gate == LLM_FFN_PAR) {
+        cur = ggml_mul(ctx, cur, tmp);
+        cb(cur, "ffn_gate_par", il);
+    }
+
+    // cur = ggml_mul_mat(ctx, down, cur);
+    cur = build_lora_mm(ctx, down, cur);
+    if (down_b) {
+        cb(cur, "ffn_down", il);
+    }
+
+    if (down_b) {
+        cur = ggml_add(ctx, cur, down_b);
+    }
+
+    return cur;
+}
+
+// if max_alibi_bias > 0 then apply ALiBi
+struct ggml_tensor * llm_build_kqv_inner(
+        struct ggml_context * ctx,
+          const llama_model & model,
+        const llama_hparams & hparams,
+       const llama_kv_cache & kv,
+         struct ggml_cgraph * graph,
+         struct ggml_tensor * wo,
+         struct ggml_tensor * wo_b,
+         struct ggml_tensor * q_cur,
+         struct ggml_tensor * kq_mask,
+         struct ggml_tensor * kq_pos,
+                    int64_t   n_ctx,
+                    int32_t   n_tokens,
+                    int32_t   n_kv,
+                    float     kq_scale,
+         const llm_build_cb & cb,
+                    int       il) {
+    const int64_t n_head        = hparams.n_head;
+    const int64_t n_head_kv     = hparams.n_head_kv;
+    const int64_t n_embd_head_k = hparams.n_embd_head_k;
+    const int64_t n_embd_k_gqa  = hparams.n_embd_k_gqa();
+    const int64_t n_embd_head_v = hparams.n_embd_head_v;
+
+    struct ggml_tensor * q = ggml_permute(ctx, q_cur, 0, 2, 1, 3);
+    cb(q, "q", il);
+
+    struct ggml_tensor * k =
+        ggml_view_3d(ctx, kv.k_l[il],
+                n_embd_head_k, n_kv, n_head_kv,
+                ggml_row_size(kv.k_l[il]->type, n_embd_k_gqa),
+                ggml_row_size(kv.k_l[il]->type, n_embd_head_k),
+                0);
+    cb(k, "k", il);
+
+    struct ggml_tensor * kq = ggml_mul_mat(ctx, k, q);
+    cb(kq, "kq", il);
+
+    if (model.arch == LLM_ARCH_PHI2) {
+        // for this arch, we need to perform the KQ multiplication with F32 precision, otherwise we get NaNs
+        // ref: https://github.com/ggerganov/llama.cpp/pull/4490#issuecomment-1859055847
+        ggml_mul_mat_set_prec(kq, GGML_PREC_F32);
+    }
+
+    if (model.arch == LLM_ARCH_GROK) {
+        // need to do the following:
+        // multiply by attn_output_multiplyer of 0.08838834764831845
+        // and then :
+        // kq = 30 * tanh(kq / 30)
+        // before the softmax below
+
+        //try from phi2
+        //ggml_mul_mat_set_prec(kq, GGML_PREC_F32);
+
+        kq = ggml_tanh(ctx, ggml_scale(ctx, kq, 0.08838834764831845f/30.0f));
+        kq = ggml_scale(ctx, kq, 30);
+    }
+
+#if defined(GGML_USE_KOMPUTE)
+#pragma message("TODO: ALiBi support in ggml_soft_max_ext is not implemented for Kompute")
+#pragma message("      Falling back to ggml_alibi(). Will become an error in Mar 2024")
+#pragma message("ref:  https://github.com/ggerganov/llama.cpp/pull/5488")
+    if (hparams.f_max_alibi_bias > 0.0f) {
+        kq = ggml_scale(ctx, kq, kq_scale);
+        cb(kq, "kq_scaled", il);
+
+        kq = ggml_alibi(ctx, kq, /*n_past*/ 0, n_head, hparams.f_max_alibi_bias);
+        cb(kq, "kq_scaled_alibi", il);
+
+        kq = ggml_add(ctx, kq, kq_mask);
+        cb(kq, "kq_masked", il);
+
+        kq = ggml_soft_max(ctx, kq);
+        cb(kq, "kq_soft_max", il);
+    } else
+#endif
+    {
+        kq = ggml_soft_max_ext(ctx, kq, kq_mask, kq_pos, kq_scale, hparams.f_max_alibi_bias);
+        cb(kq, "kq_soft_max_ext", il);
+    }
+
+    GGML_ASSERT(kv.size == n_ctx);
+
+    // split cached v into n_head heads
+    struct ggml_tensor * v =
+        ggml_view_3d(ctx, kv.v_l[il],
+                n_kv, n_embd_head_v, n_head_kv,
+                ggml_element_size(kv.v_l[il])*n_ctx,
+                ggml_element_size(kv.v_l[il])*n_ctx*n_embd_head_v,
+                0);
+    cb(v, "v", il);
+
+    struct ggml_tensor * kqv = ggml_mul_mat(ctx, v, kq);
+    cb(kqv, "kqv", il);
+
+    struct ggml_tensor * kqv_merged = ggml_permute(ctx, kqv, 0, 2, 1, 3);
+    cb(kqv_merged, "kqv_merged", il);
+
+    struct ggml_tensor * cur = ggml_cont_2d(ctx, kqv_merged, n_embd_head_k*n_head, n_tokens);
+    cb(cur, "kqv_merged_cont", il);
+
+    ggml_build_forward_expand(graph, cur);
+
+    // cur = ggml_mul_mat(ctx, wo, cur);
+    cur = build_lora_mm(ctx, wo, cur);
+    if (wo_b) {
+        cb(cur, "kqv_wo", il);
+    }
+
+    if (wo_b) {
+        cur = ggml_add(ctx, cur, wo_b);
+    }
+
+    return cur;
+}
+
+struct ggml_tensor * llm_build_kv_inner(
+        struct ggml_context * ctx,
+          const llama_model & model,
+        const llama_hparams & hparams,
+       const llama_kv_cache & kv,
+         struct ggml_cgraph * graph,
+         struct ggml_tensor * wo,
+         struct ggml_tensor * wo_b,
+         struct ggml_tensor * k_cur,
+         struct ggml_tensor * v_cur,
+         struct ggml_tensor * q_cur,
+         struct ggml_tensor * kq_mask,
+         struct ggml_tensor * kq_pos,
+                    int64_t   n_ctx,
+                    int32_t   n_tokens,
+                    int32_t   kv_head,
+                    int32_t   n_kv,
+                    float     kq_scale,
+         const llm_build_cb & cb,
+                    int       il) {
+
+    // these nodes are added to the graph together so that they are not reordered
+    // by doing so, the number of splits in the graph is reduced
+    ggml_build_forward_expand(graph, q_cur);
+    ggml_build_forward_expand(graph, k_cur);
+    ggml_build_forward_expand(graph, v_cur);
+
+    llm_build_kv_store(ctx, hparams, kv, graph, k_cur, v_cur, n_ctx, n_tokens, kv_head, cb, il);
+
+    struct ggml_tensor * cur;
+
+    cur  = llm_build_kqv_inner(ctx, model, hparams, kv, graph, wo, wo_b,
+            q_cur, kq_mask, kq_pos, n_ctx, n_tokens, n_kv, kq_scale, cb, il);
+    cb(cur, "kqv_out", il);
+
+    return cur;
+}
+
     struct ggml_cgraph * build_llama() {
         struct ggml_cgraph * gf = ggml_new_graph_custom(ctx0, LLAMA_MAX_NODES, false);
 
@@ -6790,6 +7089,7 @@ struct llm_build_context {
             {
                 // compute Q and K and RoPE them
                 struct ggml_tensor * Qcur = ggml_mul_mat(ctx0, m->layers[local_il].wq, cur);
+                // struct ggml_tensor * Qcur = build_lora_mm(ctx0, m->layers[local_il].wq, cur);
                 cb(Qcur, "Qcur", il);
                 if (m->layers[local_il].bq) {
                     Qcur = ggml_add(ctx0, Qcur, m->layers[local_il].bq);
@@ -6797,6 +7097,7 @@ struct llm_build_context {
                 }
 
                 struct ggml_tensor * Kcur = ggml_mul_mat(ctx0, m->layers[local_il].wk, cur);
+                // struct ggml_tensor * Kcur = build_lora_mm(ctx0, m->layers[local_il].wk, cur);
                 cb(Kcur, "Kcur", il);
                 if (m->layers[local_il].bk) {
                     Kcur = ggml_add(ctx0, Kcur, m->layers[local_il].bk);
@@ -6804,6 +7105,7 @@ struct llm_build_context {
                 }
 
                 struct ggml_tensor * Vcur = ggml_mul_mat(ctx0, m->layers[local_il].wv, cur);
+                // struct ggml_tensor * Vcur = build_lora_mm(ctx0, m->layers[local_il].wv, cur);
                 cb(Vcur, "Vcur", il);
                 if (m->layers[local_il].bv) {
                     Vcur = ggml_add(ctx0, Vcur, m->layers[local_il].bv);
@@ -6825,6 +7127,7 @@ struct llm_build_context {
                 cb(Kcur, "Kcur", il);
 
                 cur = llm_build_kv(ctx0, *m, hparams, kv_self, gf,
+                // cur = llm_build_kv_inner(ctx0, *m, hparams, kv_self, gf,
                         m->layers[local_il].wo, m->layers[local_il].bo,
                         Kcur, Vcur, Qcur, KQ_mask, nullptr, n_ctx, n_tokens, kv_head, n_kv, 1.0f/sqrtf(float(n_embd_head)), cb, il);
             }
@@ -6847,7 +7150,8 @@ struct llm_build_context {
                         LLM_NORM_RMS, cb, il);
                 cb(cur, "ffn_norm", il);
 
-                cur = llm_build_ffn(ctx0, cur,
+                // cur = llm_build_ffn(ctx0, cur,
+                cur = llm_build_ffn_inner(ctx0, cur,
                         m->layers[local_il].ffn_up,   NULL,
                         m->layers[local_il].ffn_gate, NULL,
                         m->layers[local_il].ffn_down, NULL,
@@ -14574,7 +14878,7 @@ static void llama_model_quantize_internal(const std::string & fname_inp, const s
 }
 
 static int llama_apply_lora_from_file_internal(
-    const struct llama_model & model, const char * path_lora, float scale, const char * path_base_model, int n_threads
+    struct llama_model & model, const char * path_lora, float scale, const char * path_base_model, int n_threads
 ) {
     LLAMA_LOG_INFO("%s: applying lora adapter from '%s' - please wait ...\n", __func__, path_lora);
 
@@ -14689,14 +14993,26 @@ static int llama_apply_lora_from_file_internal(
     int n_tensors = 0;
 
     // apply
-    ggml_backend_t backend_cpu = ggml_backend_cpu_init();
+    ggml_backend_t backend_cpu = ggml_backend_cuda_init(0);
     if (backend_cpu == nullptr) {
         LLAMA_LOG_ERROR("%s: error: failed to initialize cpu backend\n", __func__);
         return 1;
     }
-    ggml_backend_cpu_set_n_threads(backend_cpu, n_threads);
+    // ggml_backend_cpu_set_n_threads(backend_cpu, n_threads);
 
     std::vector<no_init<uint8_t>> read_buf;
+    ggml_init_params lora_init_params = {
+        /* .mem_size   */ ggml_tensor_overhead() * model.tensors_by_name.size() + ggml_graph_overhead(),
+        /* .mem_buffer */ nullptr,
+        /* .no_alloc   */ true,
+    };
+
+    ggml_context * lora_ctx = ggml_init(lora_init_params);
+    if (lora_ctx == nullptr) {
+        LLAMA_LOG_ERROR("%s: error: failed to initialize lora context\n", __func__);
+        ggml_backend_free(backend_cpu);
+        return 1;
+    }
     for (const auto & it : model.tensors_by_name) {
         const std::string & base_name = it.first;
         ggml_tensor * model_t = it.second;
@@ -14709,133 +15025,50 @@ static int llama_apply_lora_from_file_internal(
         tensor_meta & metaA = tensor_meta_map.at(base_name + ".loraA");
         tensor_meta & metaB = tensor_meta_map.at(base_name + ".loraB");
 
-        ggml_init_params lora_init_params = {
-            /* .mem_size   */ ggml_tensor_overhead()*128 + ggml_graph_overhead(),
-            /* .mem_buffer */ nullptr,
-            /* .no_alloc   */ true,
-        };
-        ggml_context * lora_ctx = ggml_init(lora_init_params);
-        if (lora_ctx == nullptr) {
-            LLAMA_LOG_ERROR("%s: error: failed to initialize lora context\n", __func__);
-            ggml_backend_free(backend_cpu);
-            return 1;
-        }
-
         // create tensors
         ggml_tensor * loraA = ggml_new_tensor_2d(lora_ctx, metaA.type, metaA.ne[0], metaA.ne[1]);
         ggml_tensor * loraB = ggml_new_tensor_2d(lora_ctx, metaB.type, metaB.ne[0], metaB.ne[1]);
         ggml_set_name(loraA, metaA.name.c_str());
         ggml_set_name(loraB, metaB.name.c_str());
+        lora_meta lm(loraA, loraB, scaling);
+        model.lora_map[base_name] = lm;
+    }
 
-        ggml_tensor * base_t;
-        if (ml) {
-            if (!ml->get_tensor_meta(base_name.c_str())) {
-                LLAMA_LOG_ERROR("%s: error: tensor '%s' not found in base model\n", __func__, base_name.c_str());
-                return 1;
-            }
-            base_t = ggml_dup_tensor(lora_ctx, ml->get_tensor_meta(base_name.c_str()));
-        } else {
-            base_t = ggml_dup_tensor(lora_ctx, model_t);
+    // allocate in backend buffer
+    auto buf_type = ggml_backend_get_default_buffer_type(backend_cpu);
+    ggml_backend_buffer_t lora_buf = ggml_backend_alloc_ctx_tensors_from_buft(lora_ctx, buf_type);
+    if (lora_buf == nullptr) {
+        LLAMA_LOG_ERROR("%s: error: failed to allocate lora tensors\n", __func__);
+        return 1;
+    }
+    LLAMA_LOG_INFO("%s: %10s buffer size = %8.2f MiB\n", __func__, ggml_backend_buffer_name(lora_buf), ggml_backend_buffer_get_size(lora_buf)/1024.0/1024.0);
+
+
+    // load tensor data
+    auto load_tensor = [&read_buf, &fin](const tensor_meta & tensor_meta, ggml_tensor * tensor) {
+        read_buf.resize(ggml_nbytes(tensor));
+        fin.seek(tensor_meta.offset, SEEK_SET);
+        fin.read_raw(read_buf.data(), ggml_nbytes(tensor));
+        ggml_backend_tensor_set(tensor, read_buf.data(), 0, read_buf.size());
+    };
+
+    for (const auto & it : model.tensors_by_name) {
+        const std::string & base_name = it.first;
+        ggml_tensor * model_t = it.second;
+
+        if (tensor_meta_map.find(base_name + ".loraA") == tensor_meta_map.end() ||
+            tensor_meta_map.find(base_name + ".loraB") == tensor_meta_map.end()) {
+            continue;
         }
-        ggml_set_name(base_t, base_name.c_str());
 
-        // allocate in backend buffer
-        ggml_backend_buffer_t lora_buf = ggml_backend_alloc_ctx_tensors_from_buft(lora_ctx, ggml_backend_cpu_buffer_type());
-        if (lora_buf == nullptr) {
-            LLAMA_LOG_ERROR("%s: error: failed to allocate lora tensors\n", __func__);
-            return 1;
-        }
-
-        // load tensor data
-        auto load_tensor = [&read_buf, &fin](const tensor_meta & tensor_meta, ggml_tensor * tensor) {
-            read_buf.resize(ggml_nbytes(tensor));
-            fin.seek(tensor_meta.offset, SEEK_SET);
-            fin.read_raw(read_buf.data(), ggml_nbytes(tensor));
-            ggml_backend_tensor_set(tensor, read_buf.data(), 0, read_buf.size());
-        };
-        load_tensor(metaA, loraA);
-        load_tensor(metaB, loraB);
+        tensor_meta & metaA = tensor_meta_map.at(base_name + ".loraA");
+        tensor_meta & metaB = tensor_meta_map.at(base_name + ".loraB");
+        lora_meta lm = model.lora_map[base_name];
+        load_tensor(metaA, lm.loraA);
+        load_tensor(metaB, lm.loraB);
 
         // load base model tensor data
-        if (ml) {
-            ml->load_data_for(base_t);
-        } else {
-            ggml_backend_tensor_copy(model_t, base_t);
-        }
 
-        if (ggml_is_quantized(base_t->type) && !warned) {
-            LLAMA_LOG_WARN("%s: warning: using a lora adapter with a quantized model may result in poor quality, "
-                            "use a f16 or f32 base model with --lora-base\n", __func__);
-            warned = true;
-        }
-
-        if (base_t->ne[0] != loraA->ne[1] || base_t->ne[1] != loraB->ne[1]) {
-            LLAMA_LOG_ERROR("%s: incompatible tensor dimensions (%" PRId64 " and %" PRId64 ");"
-                            " are you sure that this adapter is for this model?\n", __func__, base_t->ne[0], loraA->ne[1]);
-            ggml_free(lora_ctx);
-            ggml_backend_buffer_free(lora_buf);
-            ggml_backend_free(backend_cpu);
-            return 1;
-        }
-
-        auto build_lora_graph = [&]() {
-            // w = w + BA*s
-            ggml_tensor * BA = ggml_mul_mat(lora_ctx, loraA, loraB);
-            ggml_set_name(BA, "BA");
-
-            if (scaling != 1.0f) {
-                BA = ggml_scale(lora_ctx, BA, scaling);
-                ggml_set_name(BA, "BA_scaled");
-            }
-
-            ggml_tensor * r;
-            r = ggml_add_inplace(lora_ctx, base_t, BA);
-            ggml_set_name(r, "r_add");
-
-            if (base_t->type != model_t->type) {
-                // convert the result to the model type
-                r = ggml_cast(lora_ctx, r, model_t->type);
-                ggml_set_name(r, "r_cast");
-            }
-
-            return r;
-        };
-
-        ggml_cgraph * gf = ggml_new_graph(lora_ctx);
-        ggml_tensor * r = build_lora_graph();
-        ggml_build_forward_expand(gf, r);
-
-        ggml_backend_buffer_t graph_buf = ggml_backend_alloc_ctx_tensors_from_buft(lora_ctx, ggml_backend_cpu_buffer_type());
-        if (graph_buf == nullptr) {
-            LLAMA_LOG_ERROR("%s: error: failed to allocate graph tensors\n", __func__);
-            ggml_free(lora_ctx);
-            ggml_backend_buffer_free(lora_buf);
-            ggml_backend_free(backend_cpu);
-            return 1;
-        }
-
-        ggml_backend_graph_compute(backend_cpu, gf);
-
-        ggml_backend_tensor_set(model_t, r->data, 0, ggml_nbytes(r));
-
-#if 0
-        // TODO: use scheduler with fallback to CPU for less copies between CPU and GPU
-        //ggml_backend_sched_t sched = ggml_backend_sched_new(backends.data(), backends.size(), GGML_DEFAULT_GRAPH_SIZE);
-
-        // sched compute
-        ggml_build_forward_expand(gf, build_graph());
-        ggml_backend_sched_init_measure(sched, gf);
-
-        // create the graph again, since the previous one was destroyed by the measure
-        ggml_graph_clear(gf);
-        ggml_build_forward_expand(gf, build_graph());
-        ggml_backend_sched_graph_compute(sched, gf);
-        ggml_backend_sched_free(sched);
-#endif
-
-        ggml_backend_buffer_free(lora_buf);
-        ggml_backend_buffer_free(graph_buf);
-        ggml_free(lora_ctx);
 
         n_tensors++;
         if (n_tensors % 4 == 0) {
@@ -15565,7 +15798,7 @@ uint32_t llama_model_quantize(
     }
 }
 
-int32_t llama_model_apply_lora_from_file(const struct llama_model * model, const char * path_lora, float scale, const char * path_base_model, int32_t n_threads) {
+int32_t llama_model_apply_lora_from_file(struct llama_model * model, const char * path_lora, float scale, const char * path_base_model, int32_t n_threads) {
     try {
         return llama_apply_lora_from_file_internal(*model, path_lora, scale, path_base_model, n_threads);
     } catch (const std::exception & err) {

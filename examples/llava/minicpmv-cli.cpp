@@ -254,7 +254,7 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
 
     //std::string fname = "D:\\project\\minivpm-v-lenovo31-v3-sft\\model_skip\\sp.raw";
     //std::string fname = "/DATA/disk0/zkh/1114/model_skip/sp.raw";
-    std::string fname = "/DATA/disk1/zhangkaihuo/Lenovo_V2_5/model_skip/sp.raw";
+    std::string fname = "/DATA/disk1/zkh/3b_sft_4k_for_zkh/model_skip/sp.raw";
     auto file = fopen(fname.c_str(), "rb");
     if (file == NULL) {
         LOG_TEE("%s: can't read file %s\n", __func__, fname.c_str());
