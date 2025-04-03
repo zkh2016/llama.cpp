@@ -5,6 +5,11 @@ import torch
 
 import re
 
+def trans(key, value):
+    if 'lora_B' in key:
+        return value.t().contiguous()
+    return value
+
 def replace_lora_key(original_key, value):
     """将 xxx_lora.lora_A 结构替换为 xxx.lora_A.weight"""
     key = re.sub(
@@ -28,8 +33,8 @@ def replace_lora_key(original_key, value):
 
 
 # 配置参数
-model_path = '/DATA/disk1/zhangkaihuo/3b_sft_4k_for_zkh'
-output_path = '/DATA/disk1/zhangkaihuo/3b_sft_4k_for_zkh_lora/adapter_model.bin' # 指定输出文件路径
+model_path = '/DATA/disk1/zkh/3b_sft_4k_for_zkh'
+output_path = '/DATA/disk1/zkh/3b_sft_4k_for_zkh_lora/adapter_model.bin' # 指定输出文件路径
 
 # 1. 加载模型
 model = AutoModel.from_pretrained(model_path, trust_remote_code=True, torch_dtype="auto", attn_implementation="sdpa")
@@ -40,7 +45,8 @@ state_dict = model.state_dict()
 # 3. 过滤包含'lora'的key
 prefix = "llm."
 lora_weights = {
-    replace_lora_key(key, value): value.t().contiguous()
+    #replace_lora_key(key, value): value.t().contiguous()
+    replace_lora_key(key, value): trans(key, value)
     for key, value in state_dict.items() 
     if "lora" in key.lower()  # 不区分大小写匹配lora
 }

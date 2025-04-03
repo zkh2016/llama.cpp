@@ -6752,7 +6752,7 @@ struct llm_build_context {
         return lctx.inp_s_seq;
     }
 
-    struct ggml_tensor* build_lora_mm(ggml_context* ctx, ggml_tensor * w, ggml_tensor * cur) {
+    struct ggml_tensor* build_lora_mm(ggml_context* ctx, ggml_tensor * w, ggml_tensor * cur, int flag=0) {
         if(false)
         {
             ggml_tensor * res = ggml_mul_mat(ctx0, w, cur);
@@ -6763,24 +6763,28 @@ struct llm_build_context {
         auto it = model.lora_map.find(w->name);
         assert(it != model.lora_map.end());
         if(it != model.lora_map.end()){
-            // if(counts.find(w->name) == counts.end()){
-            //     counts[w->name] = 0;
-            // }else{
-            //     counts[w->name] += 1;
-            // }
-            // assert(counts[w->name] <= 1);
-            // printf("call lora mm\n");
             const auto& lw = it->second;
             assert(lw.scale == 2.0);
-            ggml_tensor * res = ggml_mul_mat(ctx, w, cur);
-            ggml_tensor * ab_cur = ggml_mul_mat(
-                    ctx,  lw.loraB,  //loraB(1024, 32)
-                    ggml_mul_mat(ctx, lw.loraA, cur) //loraA(32, 3072)
-                    );
+            if(flag == 0){ //proj(x) + lora(x)
+                ggml_tensor * res = ggml_mul_mat(ctx, w, cur);
+                ggml_tensor * ab_cur = ggml_mul_mat(
+                        ctx,  lw.loraB,  //loraB(1024, 32)
+                        ggml_mul_mat(ctx, lw.loraA, cur) //loraA(32, 3072)
+                        );
 
-            ab_cur = ggml_scale(ctx, ab_cur, lw.scale);
-            res = ggml_add(ctx0, res, ab_cur);
-            return res;
+                ab_cur = ggml_scale(ctx, ab_cur, lw.scale);
+                res = ggml_add(ctx0, res, ab_cur);
+                return res;
+            }else{ //lora(proj(x))
+                ggml_tensor * res = ggml_mul_mat(ctx, w, cur);
+                ggml_tensor * ab_cur = ggml_mul_mat(
+                        ctx,  lw.loraB,  //loraB(1024, 32)
+                        ggml_mul_mat(ctx, lw.loraA, res) //loraA(32, 3072)
+                        );
+
+                ab_cur = ggml_scale(ctx, ab_cur, lw.scale);
+                return ab_cur;
+            }
         }else{
             ggml_tensor * res = ggml_mul_mat(ctx, w, cur);
             return res;
@@ -6987,7 +6991,7 @@ struct ggml_tensor * llm_build_kqv_inner(
     ggml_build_forward_expand(graph, cur);
 
     // cur = ggml_mul_mat(ctx, wo, cur);
-    cur = build_lora_mm(ctx, wo, cur);
+    cur = build_lora_mm(ctx, wo, cur, 1);
     if (wo_b) {
         cb(cur, "kqv_wo", il);
     }
@@ -15002,7 +15006,7 @@ static int llama_apply_lora_from_file_internal(
 
     std::vector<no_init<uint8_t>> read_buf;
     ggml_init_params lora_init_params = {
-        /* .mem_size   */ ggml_tensor_overhead() * model.tensors_by_name.size() + ggml_graph_overhead(),
+        /* .mem_size   */ ggml_tensor_overhead() * 128 * model.tensors_by_name.size() + ggml_graph_overhead(),
         /* .mem_buffer */ nullptr,
         /* .no_alloc   */ true,
     };
