@@ -6773,7 +6773,7 @@ struct llm_build_context {
                         );
 
                 ab_cur = ggml_scale(ctx, ab_cur, lw.scale);
-                res = ggml_add(ctx0, res, ab_cur);
+                res = ggml_add(ctx, res, ab_cur);
                 return res;
             }else{ //lora(proj(x))
                 ggml_tensor * res = ggml_mul_mat(ctx, w, cur);
@@ -6783,7 +6783,7 @@ struct llm_build_context {
                         );
 
                 ab_cur = ggml_scale(ctx, ab_cur, lw.scale);
-                return ab_cur;
+                return ggml_add(ctx, res, ab_cur);
             }
         }else{
             ggml_tensor * res = ggml_mul_mat(ctx, w, cur);
@@ -7092,24 +7092,24 @@ struct ggml_tensor * llm_build_kv_inner(
             // self-attention
             {
                 // compute Q and K and RoPE them
-                struct ggml_tensor * Qcur = ggml_mul_mat(ctx0, m->layers[local_il].wq, cur);
-                // struct ggml_tensor * Qcur = build_lora_mm(ctx0, m->layers[local_il].wq, cur);
+                // struct ggml_tensor * Qcur = ggml_mul_mat(ctx0, m->layers[local_il].wq, cur);
+                struct ggml_tensor * Qcur = build_lora_mm(ctx0, m->layers[local_il].wq, cur);
                 cb(Qcur, "Qcur", il);
                 if (m->layers[local_il].bq) {
                     Qcur = ggml_add(ctx0, Qcur, m->layers[local_il].bq);
                     cb(Qcur, "Qcur", il);
                 }
 
-                struct ggml_tensor * Kcur = ggml_mul_mat(ctx0, m->layers[local_il].wk, cur);
-                // struct ggml_tensor * Kcur = build_lora_mm(ctx0, m->layers[local_il].wk, cur);
+                // struct ggml_tensor * Kcur = ggml_mul_mat(ctx0, m->layers[local_il].wk, cur);
+                struct ggml_tensor * Kcur = build_lora_mm(ctx0, m->layers[local_il].wk, cur);
                 cb(Kcur, "Kcur", il);
                 if (m->layers[local_il].bk) {
                     Kcur = ggml_add(ctx0, Kcur, m->layers[local_il].bk);
                     cb(Kcur, "Kcur", il);
                 }
 
-                struct ggml_tensor * Vcur = ggml_mul_mat(ctx0, m->layers[local_il].wv, cur);
-                // struct ggml_tensor * Vcur = build_lora_mm(ctx0, m->layers[local_il].wv, cur);
+                // struct ggml_tensor * Vcur = ggml_mul_mat(ctx0, m->layers[local_il].wv, cur);
+                struct ggml_tensor * Vcur = build_lora_mm(ctx0, m->layers[local_il].wv, cur);
                 cb(Vcur, "Vcur", il);
                 if (m->layers[local_il].bv) {
                     Vcur = ggml_add(ctx0, Vcur, m->layers[local_il].bv);
@@ -7130,8 +7130,8 @@ struct ggml_tensor * llm_build_kv_inner(
                 );
                 cb(Kcur, "Kcur", il);
 
-                cur = llm_build_kv(ctx0, *m, hparams, kv_self, gf,
-                // cur = llm_build_kv_inner(ctx0, *m, hparams, kv_self, gf,
+                // cur = llm_build_kv(ctx0, *m, hparams, kv_self, gf,
+                cur = llm_build_kv_inner(ctx0, *m, hparams, kv_self, gf,
                         m->layers[local_il].wo, m->layers[local_il].bo,
                         Kcur, Vcur, Qcur, KQ_mask, nullptr, n_ctx, n_tokens, kv_head, n_kv, 1.0f/sqrtf(float(n_embd_head)), cb, il);
             }
