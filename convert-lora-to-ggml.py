@@ -109,7 +109,7 @@ if __name__ == '__main__':
                 continue
             if k.endswith("lora_A.weight"):
                 #if v.dtype != torch.float16 and v.dtype != torch.float32:
-                v = v.float()
+                #v = v.float()
                 v = v.T
             else:
                 v = v.float()

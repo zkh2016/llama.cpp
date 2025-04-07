@@ -29,13 +29,18 @@ if len(clip_tensors) > 0:
             f.write("{}\n")
 
 config = model.llm.config
-config.auto_map = {
-    "AutoConfig": "configuration_minicpm.MiniCPMConfig",
-    "AutoModel": "modeling_minicpm.MiniCPMModel",
-    "AutoModelForCausalLM": "modeling_minicpm.MiniCPMForCausalLM",
-    "AutoModelForSeq2SeqLM": "modeling_minicpm.MiniCPMForCausalLM",
-    "AutoModelForSequenceClassification": "modeling_minicpm.MiniCPMForSequenceClassification"
-}
+#config.auto_map = {
+#    "AutoConfig": "configuration_minicpm.MiniCPMConfig",
+#    "AutoModel": "modeling_minicpm.MiniCPMModel",
+#    "AutoModelForCausalLM": "modeling_minicpm.MiniCPMForCausalLM",
+#    "AutoModelForSeq2SeqLM": "modeling_minicpm.MiniCPMForCausalLM",
+#    "AutoModelForSequenceClassification": "modeling_minicpm.MiniCPMForSequenceClassification"
+#}
+
+original_state_dict = model.llm.state_dict()
+filtered_state_dict = {k: v for k, v in original_state_dict.items() if 'lora' not in k}
+model.llm.load_state_dict(filtered_state_dict, strict=False)
+#
 model.llm.save_pretrained(f"{args.model}/model")
 tok = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
 tok.save_pretrained(f"{args.model}/model")

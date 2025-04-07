@@ -254,7 +254,7 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
 
     //std::string fname = "D:\\project\\minivpm-v-lenovo31-v3-sft\\model_skip\\sp.raw";
     //std::string fname = "/DATA/disk0/zkh/1114/model_skip/sp.raw";
-    std::string fname = "/DATA/disk1/zkh/3b_sft_4k_for_zkh/model_skip/sp.raw";
+    std::string fname = "/DATA/disk1/zkh/lenovo_0407_02/model_skip/sp.raw";
     auto file = fopen(fname.c_str(), "rb");
     if (file == NULL) {
         LOG_TEE("%s: can't read file %s\n", __func__, fname.c_str());
@@ -287,7 +287,7 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
     //printf("after process_eval_image_embed_l\n");
     if (num_image_embeds > 1) {
         size_t num_image_embeds_col = clip_uhd_num_image_embeds_col(ctx_llava->ctx_clip);
-        //printf("num_image_embeds = %d, num_image_embeds_col = %d\n", num_image_embeds, num_image_embeds_col); 
+        // printf("num_image_embeds = %d, num_image_embeds_col = %d\n", num_image_embeds, num_image_embeds_col); 
         for (size_t i = 0; i < (num_image_embeds-1)/num_image_embeds_col; ++i) {
             for (size_t j = 0; j < num_image_embeds_col; ++j) {
                 process_eval_image_embed_l(ctx_llava, embeds, params->n_batch, &n_past, idx++, 1, buffer);
@@ -325,7 +325,7 @@ static bool process_prompt(int type, struct llava_context * ctx_llava, gpt_param
             system_prompt = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n";
         }
         else if (has_minicpmv_projector == 7) {
-            system_prompt = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n";
+            system_prompt = "<|begin_of_text|><|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n";
         }
         return eval_string(ctx_llava->ctx_llama, system_prompt.c_str(), params->n_batch, &n_past, false);
     }

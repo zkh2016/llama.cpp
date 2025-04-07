@@ -22,7 +22,7 @@ def save_last_n_layers(model, n, save_path):
     for key in state_dict.keys():
         if "layer" not in key:
             if "model.embed_tokens.weight" in key or "lm_head.weight" in key:
-                new_state_dict[key] = torch.zeros([1,4096])
+                new_state_dict[key] = torch.zeros([1,3072])
             else:
                 new_state_dict[key] = state_dict[key]
             print(key, state_dict[key].shape, new_state_dict[key].shape)

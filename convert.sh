@@ -24,4 +24,4 @@ python convert-hf-to-gguf.py ${model_path}/model
 
 ./build/bin/quantize ${model_path}/model/ggml-model-f16.gguf ${model_path}/model/ggml-model-Q4_K_M.gguf Q4_K_M
 
-python convert-lora-to-ggml.py /DATA/disk1/zhangkaihuo/3b_sft_4k_for_zkh_lora/
+python convert-lora-to-ggml.py /DATA/disk1/zkh/3b_sft_4k_for_zkh_lora/
