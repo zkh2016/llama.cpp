@@ -29,7 +29,7 @@ def save_last_n_layers(model, n, save_path):
     torch.save(new_state_dict, save_path)
     
     embedding_layer = model.model.embed_tokens
-    indexs = [128011, 128012, 128021, 128022]
+    indexs = [128023, 15, 128024, 128011, 128012, 128021, 128022] #<image_id>, 0, </image_id>, <image>, </image>, <slice>, </slice>
     with open(f"{model_path}/model_skip/sp.raw", "wb") as f:
         for index in indexs:
             indices = torch.tensor([index])

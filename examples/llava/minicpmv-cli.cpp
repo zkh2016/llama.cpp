@@ -194,15 +194,21 @@ static void process_eval_image_embed(struct llava_context * ctx_llava, const str
 static void process_eval_image_embed_l(struct llava_context * ctx_llava, const struct llava_image_embed * embeds, int n_batch, int * n_past, int idx, int sp , unsigned char * buffer) {
     int n_patches = clip_n_patches(ctx_llava->ctx_clip);
     int token_len = clip_n_mmproj_embd(ctx_llava->ctx_clip)*sizeof(float);
-    float * image_embed = (float *)malloc(clip_embd_nbytes(ctx_llava->ctx_clip)+2*token_len);
+    float * image_embed = nullptr;// = (float *)malloc(clip_embd_nbytes(ctx_llava->ctx_clip)+2*token_len);
     // printf("sp = %d, n_patches=%d, token_len=%d\n", sp, n_patches, token_len);
     if (sp == 0) {
-        std::memcpy(image_embed, buffer, token_len);
-        std::memcpy((char*)image_embed + (n_patches + 1) * token_len, buffer+token_len, token_len);
+        //<image_id>0</image_id><image>
+        image_embed = (float *)malloc(clip_embd_nbytes(ctx_llava->ctx_clip)+5*token_len);
+        std::memcpy(image_embed, buffer, 4 * token_len);
+        //</image>
+        std::memcpy((char*)image_embed + (n_patches + 4) * token_len, buffer+token_len * 4, token_len);
     }
     else if (sp == 1) {
-        std::memcpy(image_embed, buffer+token_len*2, token_len);
-        std::memcpy((char*)image_embed + (n_patches + 1) * token_len, buffer+token_len*3, token_len);
+        //<slice>
+        image_embed = (float *)malloc(clip_embd_nbytes(ctx_llava->ctx_clip)+2*token_len);
+        std::memcpy(image_embed, buffer+token_len*4, token_len);
+        //</slice>
+        std::memcpy((char*)image_embed + (n_patches + 1) * token_len, buffer+token_len*5, token_len);
     }
     
     // printf("before memcpy, idx=%d, nbytes=%d, token_len=%d, \n", idx, clip_embd_nbytes(ctx_llava->ctx_clip), token_len);
@@ -325,7 +331,7 @@ static bool process_prompt(int type, struct llava_context * ctx_llava, gpt_param
             system_prompt = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n";
         }
         else if (has_minicpmv_projector == 7) {
-            system_prompt = "<|begin_of_text|><|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n<image_id>0</image_id>";
+            system_prompt = "<|begin_of_text|><|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n";
         }
         return eval_string(ctx_llava->ctx_llama, system_prompt.c_str(), params->n_batch, &n_past, false);
     }
