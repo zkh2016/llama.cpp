@@ -325,7 +325,7 @@ static bool process_prompt(int type, struct llava_context * ctx_llava, gpt_param
             system_prompt = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n";
         }
         else if (has_minicpmv_projector == 7) {
-            system_prompt = "<|begin_of_text|><|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n";
+            system_prompt = "<|begin_of_text|><|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n<image_id>0</image_id>";
         }
         return eval_string(ctx_llava->ctx_llama, system_prompt.c_str(), params->n_batch, &n_past, false);
     }
