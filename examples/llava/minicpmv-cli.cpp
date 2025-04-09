@@ -196,29 +196,36 @@ static void process_eval_image_embed_l(struct llava_context * ctx_llava, const s
     int token_len = clip_n_mmproj_embd(ctx_llava->ctx_clip)*sizeof(float);
     float * image_embed = nullptr;// = (float *)malloc(clip_embd_nbytes(ctx_llava->ctx_clip)+2*token_len);
     // printf("sp = %d, n_patches=%d, token_len=%d\n", sp, n_patches, token_len);
+    int sp_num = 2;
     if (sp == 0) {
-        //<image_id>0</image_id><image>
         image_embed = (float *)malloc(clip_embd_nbytes(ctx_llava->ctx_clip)+5*token_len);
+        //<image_id>0</image_id><image>
         std::memcpy(image_embed, buffer, 4 * token_len);
+
+        std::memcpy((char*)image_embed+token_len*4, embeds->embed + idx * clip_n_patches(ctx_llava->ctx_clip) * clip_n_mmproj_embd(ctx_llava->ctx_clip), clip_embd_nbytes(ctx_llava->ctx_clip));
+
         //</image>
         std::memcpy((char*)image_embed + (n_patches + 4) * token_len, buffer+token_len * 4, token_len);
+        sp_num = 5;
     }
     else if (sp == 1) {
-        //<slice>
         image_embed = (float *)malloc(clip_embd_nbytes(ctx_llava->ctx_clip)+2*token_len);
-        std::memcpy(image_embed, buffer+token_len*4, token_len);
+        //<slice>
+        std::memcpy(image_embed, buffer+token_len*5, token_len);
+
+        std::memcpy((char*)image_embed+token_len, embeds->embed + idx * clip_n_patches(ctx_llava->ctx_clip) * clip_n_mmproj_embd(ctx_llava->ctx_clip), clip_embd_nbytes(ctx_llava->ctx_clip));
+
         //</slice>
-        std::memcpy((char*)image_embed + (n_patches + 1) * token_len, buffer+token_len*5, token_len);
+        std::memcpy((char*)image_embed + (n_patches + 1) * token_len, buffer+token_len*6, token_len);
     }
     
     // printf("before memcpy, idx=%d, nbytes=%d, token_len=%d, \n", idx, clip_embd_nbytes(ctx_llava->ctx_clip), token_len);
     // printf("addr: %x\n", embeds->embed);
-    std::memcpy((char*)image_embed+token_len, embeds->embed + idx * clip_n_patches(ctx_llava->ctx_clip) * clip_n_mmproj_embd(ctx_llava->ctx_clip), clip_embd_nbytes(ctx_llava->ctx_clip));
 
     // printf("after memcpy\n");
     auto slice_embed = (llava_image_embed*)malloc(sizeof(llava_image_embed));
     slice_embed->embed = image_embed;
-    slice_embed->n_image_pos = clip_n_patches(ctx_llava->ctx_clip) + 2;
+    slice_embed->n_image_pos = clip_n_patches(ctx_llava->ctx_clip) + sp_num;
     llava_eval_image_embed(ctx_llava->ctx_llama, slice_embed, n_batch, n_past);
     llava_image_embed_free(slice_embed);
 }
@@ -260,7 +267,7 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
 
     //std::string fname = "D:\\project\\minivpm-v-lenovo31-v3-sft\\model_skip\\sp.raw";
     //std::string fname = "/DATA/disk0/zkh/1114/model_skip/sp.raw";
-    std::string fname = "/DATA/disk1/zkh/lenovo_0407_02/model_skip/sp.raw";
+    std::string fname = "/DATA/disk1/zkh/lenovo_0408_01/model_skip/sp.raw";
     auto file = fopen(fname.c_str(), "rb");
     if (file == NULL) {
         LOG_TEE("%s: can't read file %s\n", __func__, fname.c_str());
@@ -303,7 +310,9 @@ static int process_image_l(struct llava_context * ctx_llava, struct llava_image_
             }
         }
     }
-    res = eval_string(ctx_llava->ctx_llama, std::string("\n").c_str(), params->n_batch, &n_past, false);
+    else{
+        res = eval_string(ctx_llava->ctx_llama, std::string("\n").c_str(), params->n_batch, &n_past, false);
+    }
     LOG_TEE("%s: image token past: %d\n", __func__, n_past);
     free(buffer);
     if(!res) return 0;
