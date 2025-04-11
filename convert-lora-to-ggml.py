@@ -15,6 +15,8 @@ if 'NO_LOCAL_GGUF' not in os.environ:
     sys.path.insert(1, str(Path(__file__).parent / 'gguf-py' / 'gguf'))
 import gguf
 
+from convert import permute
+
 NUMPY_TYPE_TO_FTYPE: dict[str, int] = {"float32": 0, "float16": 1}
 
 
@@ -115,6 +117,13 @@ if __name__ == '__main__':
                 v = v.float()
 
             t = v.detach().numpy()
+
+            print("====", k)
+            if k.endswith("q_proj.lora_B.weight"):
+                t = permute(t, 24, 24)
+            if k.endswith("k_proj.lora_B.weight"):
+                t = permute(t, 24, 8)
+
 
             prefix = "base_model.model."
             if k.startswith(prefix):
