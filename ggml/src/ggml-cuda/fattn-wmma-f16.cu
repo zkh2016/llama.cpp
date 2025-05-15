@@ -496,6 +496,12 @@ void ggml_cuda_flash_attn_ext_wmma_f16_case(ggml_backend_cuda_context & ctx, ggm
 void ggml_cuda_flash_attn_ext_wmma_f16(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
     const ggml_tensor * KQV = dst;
     const ggml_tensor * Q   = dst->src[0];
+    {
+        const ggml_tensor * K = dst->src[1];
+        printf("===============================ggml_cuda_flash_attn_ext_wmma_f16:\n");
+        printf("Q: %d %d %d %d\n", Q->ne[0], Q->ne[1], Q->ne[2], Q->ne[3]);
+        printf("K: %d %d %d %d\n", K->ne[0], K->ne[1], K->ne[2], K->ne[3]);
+    }
 
     const enum ggml_prec prec = ggml_flash_attn_ext_get_prec(KQV);
     const int warp_size = ggml_cuda_info().devices[ctx.device].warp_size;

@@ -202,7 +202,7 @@ ggml_backend_t ggml_backend_cpu_init(void) {
         return NULL;
     }
 
-    ctx->n_threads           = GGML_DEFAULT_N_THREADS;
+    ctx->n_threads           = 1;//GGML_DEFAULT_N_THREADS;
     ctx->threadpool          = NULL;
     ctx->work_data           = NULL;
     ctx->work_size           = 0;

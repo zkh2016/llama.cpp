@@ -279,6 +279,8 @@ void ggml_cuda_flash_attn_ext(ggml_backend_cuda_context & ctx, ggml_tensor * dst
     const int warp_size = ggml_cuda_info().devices[ggml_cuda_get_device()].warp_size;
     const enum ggml_prec prec = ggml_flash_attn_ext_get_prec(KQV);
 
+    printf("====ggml_cuda_flash_attn_ext: %d %d %d %d\n", GGML_CUDA_CC_IS_AMD(cc), fast_fp16_available(cc), fp16_mma_available(cc), new_mma_available(cc));
+
     if (GGML_CUDA_CC_IS_AMD(cc)) {
 #if defined(GGML_HIP_ROCWMMA_FATTN)
         if (fp16_mma_available(cc)) {
@@ -326,6 +328,14 @@ void ggml_cuda_flash_attn_ext(ggml_backend_cuda_context & ctx, ggml_tensor * dst
     const bool mma_needs_data_conversion = K->type != GGML_TYPE_F16 || V->type != GGML_TYPE_F16;
     const bool mma_faster_for_bs1 = new_mma_available(cc) && gqa_opt_applies && cc < GGML_CUDA_CC_ADA_LOVELACE && !mma_needs_data_conversion;
     const bool can_use_vector_kernel = Q->ne[0] <= 256 && Q->ne[0] % (2*warp_size) == 0;
+    {
+        const ggml_tensor * K = dst->src[1];
+        const ggml_tensor * V = dst->src[2];
+        // printf("===============================ggml_cuda_flash_attn_ext: %d %d %d\n", Q->ne[1], can_use_vector_kernel, mma_faster_for_bs1);
+        // printf("Q: %d %d %d %d\n", Q->ne[0], Q->ne[1], Q->ne[2], Q->ne[3]); //head_dim, n_tokens, n_head, 1 
+        // printf("K: %d %d %d %d\n", K->ne[0], K->ne[1], K->ne[2], K->ne[3]); //head_dim, num_groups, n_head_kv, 1 
+        // printf("V: %d %d %d %d\n", V->ne[0], V->ne[1], V->ne[2], V->ne[3]); //head_dim, num_groups, n_head_kv, 1 
+    }
     if (Q->ne[1] == 1 && can_use_vector_kernel && !mma_faster_for_bs1) {
         if (prec == GGML_PREC_DEFAULT) {
             ggml_cuda_flash_attn_ext_vec_f16(ctx, dst);

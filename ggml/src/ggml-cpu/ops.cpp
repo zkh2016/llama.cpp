@@ -6849,6 +6849,60 @@ static void ggml_compute_forward_flash_attn_ext_f16(
         const ggml_tensor * v,
         const ggml_tensor * mask,
         ggml_tensor * dst) {
+        
+    //ggml_tensor * topk_ids;
+    const int topk = 4;
+    const int block_size = 64;
+    std::vector<int> topk_ids(topk * q->ne[1] * k->ne[2]);
+    int topk_ids_nb1 = topk;
+    int topk_ids_nb2 = topk * q->ne[1];
+    {
+        printf("===============================ggml_compute_forward_flash_attn_ext_f16\n"); //%d %d %d\n", Q->ne[1], can_use_vector_kernel, mma_faster_for_bs1);
+        printf("Q %d: %d %d %d %d\n", q->type, q->ne[0], q->ne[1], q->ne[2], q->ne[3]); //head_dim, seq_l_q, num_attention_heads, 1 
+        printf("K %d: %d %d %d %d\n", k->type, k->ne[0], k->ne[1], k->ne[2], k->ne[3]); //head_dim, seq_l_k num_kv_heads, 1 
+        printf("V %d: %d %d %d %d\n", v->type, v->ne[0], v->ne[1], v->ne[2], v->ne[3]); //head_dim, seq_l_v num_kv_heads, 1 
+        printf("mask: %d %d %d %d\n", mask->ne[0], mask->ne[1], mask->ne[2], mask->ne[3]); //seq_l_q, seq_l_k, 1, 1 
+        printf("dst %d: %d %d %d %d\n", dst->type, dst->ne[0], dst->ne[1], dst->ne[2], dst->ne[3]); //head_dim, num_kv_heads, seq_l_q, 1 
+        // topk_idx (k, seq_l_q, num_k_head, batch)
+        /*  llama3.1 1B
+            Q: 64 350 32 1
+            K: 64 512 8 1
+            V: 64 512 8 1
+            nek1 = 512, nbk1=1024, nbk2=128, nbk3=1024
+        */
+       {
+            FILE *fp_topk_idx = fopen("/DATA/disk1/zkh/project/minicpm4/Block-Sparse-Attention/dump_data/topk_idx.bin", "r");
+            FILE *fp_q = fopen("/DATA/disk1/zkh/project/minicpm4/Block-Sparse-Attention/dump_data/q.bin", "r");
+            FILE *fp_k = fopen("/DATA/disk1/zkh/project/minicpm4/Block-Sparse-Attention/dump_data/k.bin", "r");
+            FILE *fp_v = fopen("/DATA/disk1/zkh/project/minicpm4/Block-Sparse-Attention/dump_data/v.bin", "r");
+            assert(fp_topk_idx != NULL);
+            assert(fp_q != NULL);
+            assert(fp_k != NULL);
+            assert(fp_v != NULL);
+            fread(topk_ids.data(), 1, topk_ids.size() * sizeof(int), fp_topk_idx);
+            fread((char*)q->data, 1, ggml_nelements(q) * sizeof(float), fp_q);
+            fread((char*)k->data, 1, ggml_nelements(k) * sizeof(int16_t), fp_k);
+            fread((char*)v->data, 1, ggml_nelements(v) * sizeof(int16_t), fp_k);
+            // {
+            //     std::vector<float> kf(ggml_nelements(k));
+            //     fread((char*)kf.data(), 1, ggml_nelements(k) * sizeof(float), fp_k);
+            //     for(int i = 0; i < kf.size(); i++){
+            //         ((ggml_fp16_t*)k->data)[i] = GGML_FP32_TO_FP16(kf[i]);
+            //     }
+            // }
+            // {
+            //     std::vector<float> vf(ggml_nelements(v));
+            //     fread((char*)vf.data(), 1, ggml_nelements(v) * sizeof(float), fp_v);
+            //     for(int i = 0; i < vf.size(); i++){
+            //         ((ggml_fp16_t*)v->data)[i] = GGML_FP32_TO_FP16(vf[i]);
+            //     }
+            // }
+            fclose(fp_topk_idx);
+            fclose(fp_q);
+            fclose(fp_k);
+            fclose(fp_v);
+       }
+    }
 
     GGML_TENSOR_LOCALS(int64_t, neq, q,   ne)
     GGML_TENSOR_LOCALS(size_t,  nbq, q,   nb)
@@ -6858,6 +6912,7 @@ static void ggml_compute_forward_flash_attn_ext_f16(
     GGML_TENSOR_LOCALS(size_t,  nbv, v,   nb)
     GGML_TENSOR_LOCALS(int64_t, ne,  dst, ne)
     GGML_TENSOR_LOCALS(size_t,  nb,  dst, nb)
+
 
     const int ith = params->ith;
     const int nth = params->nth;
@@ -6900,6 +6955,7 @@ static void ggml_compute_forward_flash_attn_ext_f16(
 
     // rows per thread
     const int dr = (nr + nth - 1)/nth;
+    printf("nth = %d, ith=%d\n", nth, ith);
 
     // row range for this thread
     const int ir0 = dr*ith;
@@ -6931,12 +6987,19 @@ static void ggml_compute_forward_flash_attn_ext_f16(
     GGML_ASSERT((                            q_to_vec_dot) && "fattn: unsupported K-type");
     GGML_ASSERT((v->type == GGML_TYPE_F32 || v_to_float  ) && "fattn: unsupported V-type");
 
+    printf("nek1 = %d, nbk1=%d, nbk2=%d, nbk3=%d\n", nek1, nbk1, nbk2, nbk3);
+    // {
+    //     memset((char*)dst->data, 0, ggml_nbytes(dst));
+    // }
     // loop over n_batch and n_head
+    //q: head_dim, seq_l_q, n_kv * groups, 1 -> head_dim, seq_l_q * groups, n_kv, 1
+    //k: head_dim, seq_l_k, n_kv, 1
+    //q*k
     for (int ir = ir0; ir < ir1; ++ir) {
         // q indices
-        const int iq3 = ir/(neq2*neq1);
-        const int iq2 = (ir - iq3*neq2*neq1)/neq1;
-        const int iq1 = (ir - iq3*neq2*neq1 - iq2*neq1);
+        const int iq3 = ir/(neq2*neq1); //-batch
+        const int iq2 = (ir - iq3*neq2*neq1)/neq1;//-n_kv * groups
+        const int iq1 = (ir - iq3*neq2*neq1 - iq2*neq1); //-seq_len
 
         const uint32_t h = iq2; // head index
         const float slope = (max_bias > 0.0f) ? h < n_head_log2 ? powf(m0, h + 1) : powf(m1, 2*(h - n_head_log2) + 1) : 1.0f;
@@ -6958,8 +7021,8 @@ static void ggml_compute_forward_flash_attn_ext_f16(
         const ggml_fp16_t * mp = mask ? (ggml_fp16_t *)((char *) mask->data + iq1*mask->nb[1]) : NULL;
 
         // k indices
-        const int ik3 = iq3 / rk3;
-        const int ik2 = iq2 / rk2;
+        const int ik3 = iq3 / rk3; //-batch
+        const int ik2 = iq2 / rk2; //-n_kv
 
         // v indices
         const int iv3 = iq3 / rv3;
@@ -6971,72 +7034,95 @@ static void ggml_compute_forward_flash_attn_ext_f16(
         // online softmax / attention
         // loop over n_kv and n_head_kv
         // ref: https://arxiv.org/pdf/2112.05682.pdf
-        for (int64_t ic = 0; ic < nek1; ++ic) {
-            const float mv = mp ? slope*GGML_FP16_TO_FP32(mp[ic]) : 0.0f;
-            if (mv == -INFINITY) {
-                continue;
-            }
 
-            float s; // KQ value
-
-            const char * k_data = (const char *) k->data + ( ic*nbk1 + ik2*nbk2 + ik3*nbk3);
-            kq_vec_dot(DK, &s, 0, k_data, 0, Q_q, 0, 1);
-
-            s = s*scale; // scale KQ value
-
-            if (logit_softcap != 0.0f) {
-                s = logit_softcap*tanhf(s);
-            }
-
-            s += mv; // apply mask
-
-            const float Mold = M;
-
-            float ms = 1.0f; // upon new higher max val, scale VKQ and KQ sum with this value
-            float vs = 1.0f; // post-softmax KQ value, expf(s - M)
-
-            const char * v_data = ((const char *) v->data + (ic*nbv1 + iv2*nbv2 + iv3*nbv3));
-
-            if (v->type == GGML_TYPE_F16) {
-                if (s > M) {
-                    // s is new maximum, ms < 1.0f, vs == expf(s - s) == 1.0f
-                    M = s;
-                    ms = expf(Mold - M);
-
-                    // V = V*expf(Mold - M)
-                    ggml_vec_scale_f16(DV, VKQ16, ms);
-                } else {
-                    // no new maximum, ms == 1.0f, vs != 1.0f
-                    vs = expf(s - M);
+        // q (head_dim, seq_l_q, num_k_head * groups, batch)
+        // topk_ids (k, seq_l_q, num_k_head, batch)
+        // const int topk = 4;
+        // const int block_size = 64;
+        // size_t n_topk_ids = ggml_nelements(topk_ids);
+        // int *topk_data = (int*)(topk_ids->data + (ik3 * topk_ids->nb[3] + ik2 * topk_ids->nb[2] + iq1 * topk_ids->nb[1]));
+        int *topk_data = topk_ids.data() + ik2 * topk_ids_nb2 + iq1 * topk_ids_nb1;
+        bool skip_all = true;
+        // for(int topi = 0; topi < topk; topi++) {
+        //     int id = topk_data[topi];
+        //     if(id == -1){
+        //         continue;
+        //     }
+        //     int start = id * block_size;
+        //     int end = (id + 1) * block_size;
+        for (int64_t ic = 0; ic < nek1; ++ic) {// nek1 == seq_l_k
+            // for(int ic = start; ic < end && ic < nek1; ++ic){
+                skip_all = false;
+                const float mv = mp ? slope*GGML_FP16_TO_FP32(mp[ic]) : 0.0f;
+                if (mv == -INFINITY) {
+                    continue;
                 }
 
-                // V += v*expf(s - M)
-                ggml_vec_mad_f16(DV, VKQ16, (const ggml_fp16_t *) v_data, vs);
-            } else {
-                if (s > M) {
-                    // s is new maximum, ms < 1.0f, vs == expf(s - s) == 1.0f
-                    M = s;
-                    ms = expf(Mold - M);
+                float s; // KQ value
 
-                    // V = V*expf(Mold - M)
-                    ggml_vec_scale_f32(DV, VKQ32, ms);
-                } else {
-                    // no new maximum, ms == 1.0f, vs != 1.0f
-                    vs = expf(s - M);
+                //-k shape: 64 512 8 1
+                const char * k_data = (const char *) k->data + ( ic*nbk1 + ik2*nbk2 + ik3*nbk3); //-nbk1=1024, nbk2=128, nbk3=1024
+                kq_vec_dot(DK, &s, 0, k_data, 0, Q_q, 0, 1);
+
+                s = s*scale; // scale KQ value
+
+                if (logit_softcap != 0.0f) {
+                    s = logit_softcap*tanhf(s);
                 }
 
-                // V += v*expf(s - M)
-                if (v_to_float) {
-                    v_to_float(v_data, V32, DV);
-                    ggml_vec_mad_f32(DV, VKQ32, V32, vs);
+                s += mv; // apply mask
+
+                const float Mold = M;
+
+                float ms = 1.0f; // upon new higher max val, scale VKQ and KQ sum with this value
+                float vs = 1.0f; // post-softmax KQ value, expf(s - M)
+
+                const char * v_data = ((const char *) v->data + (ic*nbv1 + iv2*nbv2 + iv3*nbv3));
+
+                if (v->type == GGML_TYPE_F16) {
+                    if (s > M) {
+                        // s is new maximum, ms < 1.0f, vs == expf(s - s) == 1.0f
+                        M = s;
+                        ms = expf(Mold - M);
+
+                        // V = V*expf(Mold - M)
+                        ggml_vec_scale_f16(DV, VKQ16, ms);
+                    } else {
+                        // no new maximum, ms == 1.0f, vs != 1.0f
+                        vs = expf(s - M);
+                    }
+
+                    // V += v*expf(s - M)
+                    ggml_vec_mad_f16(DV, VKQ16, (const ggml_fp16_t *) v_data, vs);
                 } else {
-                    // V is F32
-                    ggml_vec_mad_f32(DV, VKQ32, (const float *) v_data, vs);
+                    if (s > M) {
+                        // s is new maximum, ms < 1.0f, vs == expf(s - s) == 1.0f
+                        M = s;
+                        ms = expf(Mold - M);
+
+                        // V = V*expf(Mold - M)
+                        ggml_vec_scale_f32(DV, VKQ32, ms);
+                    } else {
+                        // no new maximum, ms == 1.0f, vs != 1.0f
+                        vs = expf(s - M);
+                    }
+
+                    // V += v*expf(s - M)
+                    if (v_to_float) {
+                        v_to_float(v_data, V32, DV);
+                        ggml_vec_mad_f32(DV, VKQ32, V32, vs);
+                    } else {
+                        // V is F32
+                        ggml_vec_mad_f32(DV, VKQ32, (const float *) v_data, vs);
+                    }
                 }
+
+                S = S*ms + vs; // scale and increment sum with partial sum
+                // if(iq1 == 4 && topi == 0){
+                //     printf("debug: %f %f, %d\n", S, GGML_FP16_TO_FP32(VKQ16[0]), v->type);
+                // }
             }
-
-            S = S*ms + vs; // scale and increment sum with partial sum
-        }
+        // }
 
         if (v->type == GGML_TYPE_F16) {
             for (int64_t d = 0; d < DV; ++d) {
@@ -7044,8 +7130,10 @@ static void ggml_compute_forward_flash_attn_ext_f16(
             }
         }
 
+        // printf("%d: %d %d %d %d, %d, %f\n", iq1, topk_data[0], topk_data[1], topk_data[2], topk_data[3], skip_all, VKQ32[0]);
         // V /= S
-        const float S_inv = 1.0f/S;
+        // const float S_inv = skip_all ? 0.0 : 1.0f/S ;
+        const float S_inv = 1.0f/S ;
         ggml_vec_scale_f32(DV, VKQ32, S_inv);
 
         // dst indices
@@ -7058,6 +7146,11 @@ static void ggml_compute_forward_flash_attn_ext_f16(
 
         // permute(0, 2, 1, 3)
         memcpy((char *) dst->data + (i3*ne2*ne1 + i2 + i1*ne1)*nb1, VKQ32, nb1);
+    }
+    { //save result
+        FILE *fp_out = fopen("/DATA/disk1/zkh/project/minicpm4/Block-Sparse-Attention/dump_data/c_out.bin", "w");
+        fwrite((char*)dst->data, 1, ggml_nelements(dst) * sizeof(float), fp_out);
+        fclose(fp_out);
     }
 }
 

@@ -1202,9 +1202,17 @@ ggml_tensor * llm_graph_context::build_attn_mha(
     const auto n_head   = q->ne[2];
     const auto n_kv     = k->ne[1];
 
+    // {
+    //     printf("===============================build_attn_mha\n"); //%d %d %d\n", Q->ne[1], can_use_vector_kernel, mma_faster_for_bs1);
+    //     printf("Q: %d %d %d %d\n", q->ne[0], q->ne[1], q->ne[2], q->ne[3]); //head_dim, seq_l_q, num_attention_heads, batch_size
+    //     printf("K: %d %d %d %d\n", k->ne[0], k->ne[1], k->ne[2], k->ne[3]); //head_dim, seq_l_k, num_kv_heads, batch_size 
+    //     printf("V: %d %d %d %d\n", v->ne[0], v->ne[1], v->ne[2], v->ne[3]); //head_dim, seq_l_v, num_kv_heads, batch_size
+    // }
+
     ggml_tensor * cur;
 
     // TODO: replace hardcoded padding with ggml-provided padding
+    // printf("use fa: %d %d %d\n", cparams.flash_attn, n_kv, kq_b == nullptr);
     if (cparams.flash_attn && (n_kv % 256 == 0) && kq_b == nullptr) {
         GGML_ASSERT(kq_b == nullptr && "Flash attention does not support KQ bias yet");
 

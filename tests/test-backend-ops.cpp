@@ -41,7 +41,7 @@ static void init_tensor_uniform(ggml_tensor * tensor, float min = -1.0f, float m
     std::vector<float> data(nels);
     {
         // parallel initialization
-        static const size_t n_threads = std::thread::hardware_concurrency();
+        static const size_t n_threads = 1;//std::thread::hardware_concurrency();
         // static RNG initialization (revisit if n_threads stops being constant)
         static std::vector<std::default_random_engine> generators = []() {
             std::random_device rd;
@@ -100,8 +100,9 @@ static void init_tensor_uniform(ggml_tensor * tensor, float min = -1.0f, float m
             };
 
             const size_t min_blocks_per_thread = 1;
-            const size_t n_threads = std::min<size_t>(std::thread::hardware_concurrency()/2,
-                                                      std::max<size_t>(1, n_blocks / min_blocks_per_thread));
+            // const size_t n_threads = std::min<size_t>(std::thread::hardware_concurrency()/2,
+            //                                           std::max<size_t>(1, n_blocks / min_blocks_per_thread));
+            const size_t n_threads = 1;
             std::vector<std::future<void>> tasks;
             tasks.reserve(n_threads);
             for (size_t i = 0; i < n_threads; i++) {
@@ -451,10 +452,11 @@ struct test_case {
         ggml_tensor * out = build_graph(ctx);
 
         if (op_name != nullptr && op_desc(out) != op_name) {
-            //printf("  %s: skipping\n", op_desc(out).c_str());
+            // printf("  %s %s: skipping\n", op_desc(out).c_str(), op_name);
             ggml_free(ctx);
             return true;
         }
+        printf("call %s\n", op_name);
 
         printf("  %s(%s): ", op_desc(out).c_str(), vars().c_str());
         fflush(stdout);
@@ -3312,6 +3314,7 @@ struct test_flash_attn_ext : public test_case {
         : hsk(hsk), hsv(hsv), nh(nh), nr(nr), kv(kv), nb(nb), mask(mask), max_bias(max_bias), logit_softcap(logit_softcap), prec(prec), type_KV(type_KV), permute(permute) {}
 
     ggml_tensor * build_graph(ggml_context * ctx) override {
+        printf("build flash attn\n");
         const int64_t hsk_padded = GGML_PAD(hsk, ggml_blck_size(type_KV));
         const int64_t hsv_padded = GGML_PAD(hsv, ggml_blck_size(type_KV));
 
@@ -4485,42 +4488,71 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
     test_cases.emplace_back(new test_timestep_embedding());
     test_cases.emplace_back(new test_leaky_relu());
 
+    {//test
+    /*
+    const int64_t hsk; // K head size
+    const int64_t hsv; // V head size
+    const int64_t nh; // num heads
+    const int64_t nr; // repeat in Q, tests for grouped-query attention
+    const int64_t kv; // kv size
+    const int64_t nb; // batch size
+
+    const bool mask; // use mask
+
+    const float max_bias; // ALiBi
+    const float logit_softcap; // Gemma 2
+    */
+   //seqlen_q, seqlen_k, d, p_dropout, causal, exact_streaming, sink_num, local_num, mha_type, dtype, sparsity, batch_size, nheads, nheads_k, block_window_size
+   //1024, 1024, 128, 0.0, True, False, 0, 0, "gqa", torch.bfloat16, 0.7, 1, 32, 2, 0
+        int hsk = 128;
+        int hsv = 128;
+        int nh = 2;
+        int kv = 1024;
+        int nr = 16;
+        int nb = 1024;
+        bool mask = true;
+        float max_bias = 0.0;
+        float logit_softcap = 0.0;
+        test_cases.emplace_back(new test_flash_attn_ext(
+            hsk, hsv, nh, nr, kv, nb, mask, max_bias, logit_softcap, GGML_PREC_F32, GGML_TYPE_F16));
+    }
+
     for (int hsk : { 64, 80, 128, 192, 256, 576 }) {
         for (int hsv : { 64, 80, 128, 192, 256, 512 }) {
             if (hsk != 192 && hsk != 576 && hsk != hsv) continue;
             if (hsk == 192 && (hsv != 128 && hsv != 192)) continue;
             if (hsk == 576 && hsv != 512) continue; // DeepSeek MLA
 
-            for (bool mask : { true, false } ) {
-                for (float max_bias : { 0.0f, 8.0f }) {
-                    if (!mask && max_bias > 0.0f) continue;
-                    for (float logit_softcap : {0.0f, 10.0f}) {
-                        if (hsk != 128 && logit_softcap != 0.0f) continue;
-                        for (int nh : { 4, }) {
-                            for (int nr : { 1, 4, 16 }) {
-                                if (nr == 16 && hsk != 128) continue;
-                                for (int kv : { 512, 1024, }) {
-                                    if (nr != 1 && kv != 512) continue;
-                                    for (int nb : { 1, 3, 32, 35, }) {
-                                        for (ggml_prec prec : {GGML_PREC_F32, GGML_PREC_DEFAULT}) {
-                                            if (hsk != 128 && prec == GGML_PREC_DEFAULT) continue;
-                                            for (ggml_type type_KV : {GGML_TYPE_F16, GGML_TYPE_BF16, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0}) {
-                                                test_cases.emplace_back(new test_flash_attn_ext(
-                                                    hsk, hsv, nh, nr, kv, nb, mask, max_bias, logit_softcap, prec, type_KV));
-                                                // run fewer test cases permuted
-                                                if (mask == true && max_bias == 0.0f && logit_softcap == 0 && kv == 512) {
-                                                    test_cases.emplace_back(new test_flash_attn_ext(
-                                                        hsk, hsv, nh, nr, kv, nb, mask, max_bias, logit_softcap, prec, type_KV, {0, 2, 1, 3}));
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            // for (bool mask : { true, false } ) {
+            //     for (float max_bias : { 0.0f, 8.0f }) {
+            //         if (!mask && max_bias > 0.0f) continue;
+            //         for (float logit_softcap : {0.0f, 10.0f}) {
+            //             if (hsk != 128 && logit_softcap != 0.0f) continue;
+            //             for (int nh : { 4, }) {
+            //                 for (int nr : { 1, 4, 16 }) {
+            //                     if (nr == 16 && hsk != 128) continue;
+            //                     for (int kv : { 512, 1024, }) {
+            //                         if (nr != 1 && kv != 512) continue;
+            //                         for (int nb : { 1, 3, 32, 35, }) {
+            //                             for (ggml_prec prec : {GGML_PREC_F32, GGML_PREC_DEFAULT}) {
+            //                                 if (hsk != 128 && prec == GGML_PREC_DEFAULT) continue;
+            //                                 for (ggml_type type_KV : {GGML_TYPE_F16, GGML_TYPE_BF16, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0}) {
+            //                                     test_cases.emplace_back(new test_flash_attn_ext(
+            //                                         hsk, hsv, nh, nr, kv, nb, mask, max_bias, logit_softcap, prec, type_KV));
+            //                                     // run fewer test cases permuted
+            //                                     if (mask == true && max_bias == 0.0f && logit_softcap == 0 && kv == 512) {
+            //                                         test_cases.emplace_back(new test_flash_attn_ext(
+            //                                             hsk, hsv, nh, nr, kv, nb, mask, max_bias, logit_softcap, prec, type_KV, {0, 2, 1, 3}));
+            //                                     }
+            //                                 }
+            //                             }
+            //                         }
+            //                     }
+            //                 }
+            //             }
+            //         }
+            //     }
+            // }
         }
     }
 
@@ -4748,7 +4780,8 @@ int main(int argc, char ** argv) {
         auto ggml_backend_set_n_threads_fn = (ggml_backend_set_n_threads_t) ggml_backend_reg_get_proc_address(reg, "ggml_backend_set_n_threads");
         if (ggml_backend_set_n_threads_fn) {
             // TODO: better value for n_threads
-            ggml_backend_set_n_threads_fn(backend, std::thread::hardware_concurrency());
+            //ggml_backend_set_n_threads_fn(backend, std::thread::hardware_concurrency());
+            ggml_backend_set_n_threads_fn(backend, 1);
         }
 
         printf("  Device description: %s\n", ggml_backend_dev_description(dev));

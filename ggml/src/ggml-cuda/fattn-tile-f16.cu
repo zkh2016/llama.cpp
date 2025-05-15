@@ -327,6 +327,12 @@ void launch_fattn_tile_f16_64_128(ggml_backend_cuda_context & ctx, ggml_tensor *
 void ggml_cuda_flash_attn_ext_tile_f16(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
     const ggml_tensor * KQV = dst;
     const ggml_tensor * Q   = dst->src[0];
+    {
+        const ggml_tensor * K = dst->src[1];
+        printf("===============================ggml_cuda_flash_attn_ext_tile_f32:\n");
+        printf("Q: %d %d %d %d\n", Q->ne[0], Q->ne[1], Q->ne[2], Q->ne[3]);
+        printf("K: %d %d %d %d\n", K->ne[0], K->ne[1], K->ne[2], K->ne[3]);
+    }
 
     const int32_t precision = KQV->op_params[3];
     GGML_ASSERT(precision == GGML_PREC_DEFAULT);
