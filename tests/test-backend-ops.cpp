@@ -4507,7 +4507,7 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         int hsk = 128;
         int hsv = 128;
         int nh = 2;
-        int kv = 1024;
+        int kv = 1023;
         int nr = 16;
         int nb = 1;
         bool mask = false;

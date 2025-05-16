@@ -7125,8 +7125,8 @@ static void ggml_compute_forward_flash_attn_ext_f16(
                 //     printf("debug: %f %f, %d\n", S, GGML_FP16_TO_FP32(VKQ16[0]), v->type);
                 // }
         };
-        for(int ic = k_window_left * block_size; ic <= k_window_right * block_size; ic++){
-            if(iq1 >= ic) f(ic);
+        for(int ic = k_window_left * block_size; ic <= k_window_right * block_size && ic < nek1; ic++){
+            if(neq1 == 1 || iq1 >= ic) f(ic);
         }
         for(int topi = 0; topi < topk; ++topi) {
             int id = topk_data[topi];
