@@ -7304,8 +7304,8 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
         };
 
         //sliding window
-        for(int ic = k_window_left * block_size; ic <= k_window_right * block_size; ic++){
-            if(iq1 >= ic) f(ic);
+        for(int ic = k_window_left * block_size; ic <= k_window_right * block_size && ic < nek1; ic++){
+            if(neq1 == 1 || iq1 >= ic) f(ic);
         }
 
         for(int topi = 0; topi < topk; ++topi) {
