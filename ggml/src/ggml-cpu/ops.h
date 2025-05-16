@@ -83,6 +83,13 @@ void ggml_compute_forward_flash_attn_ext(
     const struct ggml_tensor * v,
     const struct ggml_tensor * mask,
     struct ggml_tensor * dst);
+void ggml_compute_forward_block_sparse_attn_ext(
+    const struct ggml_compute_params * params,
+    const struct ggml_tensor * q,
+    const struct ggml_tensor * k,
+    const struct ggml_tensor * v,
+    const struct ggml_tensor * topk_idx,
+    struct ggml_tensor * dst);
 void ggml_compute_forward_flash_attn_back(
         const struct ggml_compute_params * params,
         const bool masked,
