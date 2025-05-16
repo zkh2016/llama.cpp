@@ -6861,7 +6861,7 @@ static void ggml_compute_forward_flash_attn_ext_f16(
         printf("Q %d: %d %d %d %d\n", q->type, q->ne[0], q->ne[1], q->ne[2], q->ne[3]); //head_dim, seq_l_q, num_attention_heads, 1 
         printf("K %d: %d %d %d %d\n", k->type, k->ne[0], k->ne[1], k->ne[2], k->ne[3]); //head_dim, seq_l_k num_kv_heads, 1 
         printf("V %d: %d %d %d %d\n", v->type, v->ne[0], v->ne[1], v->ne[2], v->ne[3]); //head_dim, seq_l_v num_kv_heads, 1 
-        printf("mask: %d %d %d %d\n", mask->ne[0], mask->ne[1], mask->ne[2], mask->ne[3]); //seq_l_q, seq_l_k, 1, 1 
+        // printf("mask: %d %d %d %d\n", mask->ne[0], mask->ne[1], mask->ne[2], mask->ne[3]); //seq_l_q, seq_l_k, 1, 1 
         printf("dst %d: %d %d %d %d\n", dst->type, dst->ne[0], dst->ne[1], dst->ne[2], dst->ne[3]); //head_dim, num_kv_heads, seq_l_q, 1 
         // topk_idx (k, seq_l_q, num_k_head, batch)
         /*  llama3.1 1B
@@ -6870,7 +6870,7 @@ static void ggml_compute_forward_flash_attn_ext_f16(
             V: 64 512 8 1
             nek1 = 512, nbk1=1024, nbk2=128, nbk3=1024
         */
-       {
+       if(true){
             FILE *fp_topk_idx = fopen("/DATA/disk1/zkh/project/minicpm4/Block-Sparse-Attention/dump_data/topk_idx.bin", "r");
             FILE *fp_q = fopen("/DATA/disk1/zkh/project/minicpm4/Block-Sparse-Attention/dump_data/q.bin", "r");
             FILE *fp_k = fopen("/DATA/disk1/zkh/project/minicpm4/Block-Sparse-Attention/dump_data/k.bin", "r");
@@ -6882,7 +6882,7 @@ static void ggml_compute_forward_flash_attn_ext_f16(
             fread(topk_ids.data(), 1, topk_ids.size() * sizeof(int), fp_topk_idx);
             fread((char*)q->data, 1, ggml_nelements(q) * sizeof(float), fp_q);
             fread((char*)k->data, 1, ggml_nelements(k) * sizeof(int16_t), fp_k);
-            fread((char*)v->data, 1, ggml_nelements(v) * sizeof(int16_t), fp_k);
+            fread((char*)v->data, 1, ggml_nelements(v) * sizeof(int16_t), fp_v);
             // {
             //     std::vector<float> kf(ggml_nelements(k));
             //     fread((char*)kf.data(), 1, ggml_nelements(k) * sizeof(float), fp_k);
@@ -7043,15 +7043,15 @@ static void ggml_compute_forward_flash_attn_ext_f16(
         // int *topk_data = (int*)(topk_ids->data + (ik3 * topk_ids->nb[3] + ik2 * topk_ids->nb[2] + iq1 * topk_ids->nb[1]));
         int *topk_data = topk_ids.data() + ik2 * topk_ids_nb2 + iq1 * topk_ids_nb1;
         bool skip_all = true;
-        // for(int topi = 0; topi < topk; topi++) {
-        //     int id = topk_data[topi];
-        //     if(id == -1){
-        //         continue;
-        //     }
-        //     int start = id * block_size;
-        //     int end = (id + 1) * block_size;
-        for (int64_t ic = 0; ic < nek1; ++ic) {// nek1 == seq_l_k
-            // for(int ic = start; ic < end && ic < nek1; ++ic){
+        for(int topi = 0; topi < topk; topi++) {
+            int id = topk_data[topi];
+            if(id == -1){
+                continue;
+            }
+            int start = id * block_size;
+            int end = (id + 1) * block_size;
+        // for (int64_t ic = 0; ic < nek1; ++ic) {// nek1 == seq_l_k
+            for(int ic = start; ic < end && ic < nek1 && (neq1 == 1 || iq1 >= ic); ++ic){
                 skip_all = false;
                 const float mv = mp ? slope*GGML_FP16_TO_FP32(mp[ic]) : 0.0f;
                 if (mv == -INFINITY) {
@@ -7122,7 +7122,7 @@ static void ggml_compute_forward_flash_attn_ext_f16(
                 //     printf("debug: %f %f, %d\n", S, GGML_FP16_TO_FP32(VKQ16[0]), v->type);
                 // }
             }
-        // }
+        }
 
         if (v->type == GGML_TYPE_F16) {
             for (int64_t d = 0; d < DV; ++d) {
@@ -7132,8 +7132,8 @@ static void ggml_compute_forward_flash_attn_ext_f16(
 
         // printf("%d: %d %d %d %d, %d, %f\n", iq1, topk_data[0], topk_data[1], topk_data[2], topk_data[3], skip_all, VKQ32[0]);
         // V /= S
-        // const float S_inv = skip_all ? 0.0 : 1.0f/S ;
-        const float S_inv = 1.0f/S ;
+        const float S_inv = skip_all ? 0.0 : 1.0f/S ;
+        // const float S_inv = 1.0f/S ;
         ggml_vec_scale_f32(DV, VKQ32, S_inv);
 
         // dst indices
