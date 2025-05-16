@@ -6851,8 +6851,9 @@ static void ggml_compute_forward_flash_attn_ext_f16(
         ggml_tensor * dst) {
         
     //ggml_tensor * topk_ids;
-    const int topk = 4;
+    const int topk = 4; 
     const int block_size = 64;
+    const int block_window_size = 2;
     std::vector<int> topk_ids(topk * q->ne[1] * k->ne[2]);
     int topk_ids_nb1 = topk;
     int topk_ids_nb2 = topk * q->ne[1];
@@ -7043,21 +7044,23 @@ static void ggml_compute_forward_flash_attn_ext_f16(
         // int *topk_data = (int*)(topk_ids->data + (ik3 * topk_ids->nb[3] + ik2 * topk_ids->nb[2] + iq1 * topk_ids->nb[1]));
         int *topk_data = topk_ids.data() + ik2 * topk_ids_nb2 + iq1 * topk_ids_nb1;
         bool skip_all = true;
-        for(int topi = 0; topi < topk; topi++) {
-            int id = topk_data[topi];
-            if(id == -1){
-                continue;
+        const int q_block_idx = iq1 + nek1 - neq1;
+        const int k_window_right = (q_block_idx + block_size - 1) / block_size;
+        int k_window_left = block_window_size > 0 ? (q_block_idx - 1) / block_size - block_window_size + 1 : k_window_right + 1;
+        k_window_left = k_window_left < 0 ? 0 : k_window_left;
+        auto in_window = [&](int target){
+            if(k_window_left <= target && target <= k_window_right){
+                return target;
             }
-            int start = id * block_size;
-            int end = (id + 1) * block_size;
-        // for (int64_t ic = 0; ic < nek1; ++ic) {// nek1 == seq_l_k
-            for(int ic = start; ic < end && ic < nek1 && (neq1 == 1 || iq1 >= ic); ++ic){
+            return -1;
+        };
+        auto f = [&](int ic){
                 skip_all = false;
                 const float mv = mp ? slope*GGML_FP16_TO_FP32(mp[ic]) : 0.0f;
                 if (mv == -INFINITY) {
-                    continue;
+                    //continue;
+                    return;
                 }
-
                 float s; // KQ value
 
                 //-k shape: 64 512 8 1
@@ -7121,6 +7124,20 @@ static void ggml_compute_forward_flash_attn_ext_f16(
                 // if(iq1 == 4 && topi == 0){
                 //     printf("debug: %f %f, %d\n", S, GGML_FP16_TO_FP32(VKQ16[0]), v->type);
                 // }
+        };
+        for(int ic = k_window_left * block_size; ic <= k_window_right * block_size; ic++){
+            if(iq1 >= ic) f(ic);
+        }
+        for(int topi = 0; topi < topk; ++topi) {
+            int id = topk_data[topi];
+            if(id == -1 || in_window(id) != -1){
+                continue;
+            }
+            int start = id * block_size;
+            int end = (id + 1) * block_size;
+        // for (int64_t ic = 0; ic < nek1; ++ic) {// nek1 == seq_l_k
+            for(int ic = start; ic < end && ic < nek1 && (neq1 == 1 || iq1 >= ic); ++ic){
+                f(ic);
             }
         }
 

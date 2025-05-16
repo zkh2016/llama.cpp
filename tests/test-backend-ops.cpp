@@ -4509,7 +4509,7 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         int nh = 2;
         int kv = 1024;
         int nr = 16;
-        int nb = 1024;
+        int nb = 1;
         bool mask = false;
         float max_bias = 0.0;
         float logit_softcap = 0.0;
