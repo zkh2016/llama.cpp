@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstring>
+#include <float.h>
 
 static int32_t llama_relative_position_bucket(llama_pos x, llama_pos y, uint64_t n_buckets, bool bidirectional) {
     // TODO move to hparams if a T5 variant appears that uses a different value
@@ -1293,6 +1294,181 @@ ggml_tensor * llm_graph_context::build_attn_mha(
             // all nodes between the KV store and the attention output are run on the CPU
             ggml_backend_sched_set_tensor_backend(sched, cur, backend_cpu);
         }
+    }
+
+    ggml_build_forward_expand(gf, cur);
+
+    return cur;
+}
+
+
+ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
+         ggml_cgraph * gf,
+         ggml_tensor * q,
+         ggml_tensor * k,
+         ggml_tensor * v,
+         ggml_tensor * kq_b,
+         ggml_tensor * kq_mask,
+         ggml_tensor * v_mla,
+             bool      v_trans,
+             float     kq_scale) const {
+  //const int64_t n_embd_k_gqa = hparams.n_embd_k_gqa(il);
+  //const int64_t n_embd_v_gqa = hparams.n_embd_v_gqa(il);
+
+  //const int64_t n_head    = hparams.n_head(il);
+  //const int64_t n_head_kv = hparams.n_head_kv(il);
+
+  //const auto & n_embd_head_k = hparams.n_embd_head_k;
+  //const auto & n_embd_head_v = hparams.n_embd_head_v;
+
+    const auto n_tokens = q->ne[1];
+    const auto n_head   = q->ne[2];
+    const auto n_kv     = k->ne[1];
+
+    ggml_tensor * cur;
+
+    GGML_ASSERT(cparams.flash_attn);
+    GGML_ASSERT(n_kv % 256 == 0);
+    GGML_ASSERT(kq_b == nullptr);
+
+    {
+        GGML_ASSERT(kq_b == nullptr && "Flash attention does not support KQ bias yet");
+
+        if (v_trans) {
+            v = ggml_transpose(ctx0, v);
+        }
+
+        // this can happen when KV cache is not used (e.g. an embedding model with non-causal attn)
+        if (k->type == GGML_TYPE_F32) {
+            k = ggml_cast(ctx0, k, GGML_TYPE_F16);
+        }
+
+        if (v->type == GGML_TYPE_F32) {
+            v = ggml_cast(ctx0, v, GGML_TYPE_F16);
+        }
+
+        ggml_tensor* topk_idx;
+        const int topk = 4;
+        const int block_size = 64;
+        const int block_window_size = 2;
+
+        //stage1
+        ggml_tensor* compress_k;
+        {
+            //compress k
+            {
+                const int kernel_size = 32;
+                const int kernel_stride = 16;
+                ggml_tensor* t_k = ggml_reshape_4d(ctx0, 
+                        ggml_permute(ctx0, k, 1, 0, 2, 3),
+                            k->ne[1], 1, k->ne[0] * k->ne[2], k->ne[3]); //[head_dim, seq_l_k num_kv_heads, batch_size] -> [seq_l_k, 1, head_dim * num_kv_heads, batch_size]
+                compress_k = ggml_pool_2d(ctx0, t_k, GGML_OP_POOL_AVG, kernel_size, 1, kernel_stride, 1, 0, 0);
+
+                compress_k = ggml_permute(ctx0,
+                    ggml_reshape_4d(ctx0, 
+                        compress_k,
+                            compress_k->ne[0], k->ne[0], k->ne[2], k->ne[3]),
+                            1, 0, 2, 3); //[seq_l_k, 1, head_dim * num_kv_heads, batch_size] -> [head_dim, seq_l_k, num_kv_heads, batch_size]
+            }
+
+            //attention
+            ggml_tensor* kq;
+            {
+                kq = ggml_mul_mat(ctx0, compress_k, q); //[seq_l_k, seq_l_q, num_heads, batch_size]
+
+                // note: this op tends to require high floating point range
+                //       while for some models F16 is enough, for others it is not, so we default to F32 here
+                ggml_mul_mat_set_prec(kq, GGML_PREC_F32);
+
+                if (arch == LLM_ARCH_GROK) {
+                    // need to do the following:
+                    // multiply by attn_output_multiplyer of 0.08838834764831845
+                    // and then :
+                    // kq = 30 * tanh(kq / 30)
+                    // before the softmax below
+
+                    kq = ggml_tanh(ctx0, ggml_scale(ctx0, kq, 0.08838834764831845f/30.0f));
+                    kq = ggml_scale(ctx0, kq, 30);
+                }
+
+                if (hparams.attn_soft_cap) {
+                    kq = ggml_scale(ctx0, kq, 1.0f / hparams.f_attn_logit_softcapping);
+                    kq = ggml_tanh (ctx0, kq);
+                    kq = ggml_scale(ctx0, kq, hparams.f_attn_logit_softcapping);
+                }
+
+                if (kq_b) {
+                    kq = ggml_add(ctx0, kq, kq_b);
+                }
+
+                kq = ggml_soft_max_ext(ctx0, kq, kq_mask, kq_scale, hparams.f_max_alibi_bias);
+            } 
+
+            //reduce head_dim
+            {
+                //kq: [seq_l_k, seq_l_q * n_head_k * group] -> [seq_l_k, seq_l_q, n_head_k]
+                const int groups = n_head / n_kv;
+                ggml_tensor* tmp_kq = ggml_permute(ctx0, 
+                    ggml_reshape_4d(ctx0, kq, kq->ne[0], kq->ne[1], n_kv, groups),
+                        3, 0, 1, 2); 
+                kq = ggml_sum_rows(ctx0, tmp_kq);
+            }
+
+            //transform score
+            ggml_tensor* score;
+            {
+                const int kernel_size = 5;
+                const int kernel_stride = 4;
+                const int pad = 1;
+                score = ggml_pool_2d(ctx0, kq, GGML_OP_POOL_MAX, kernel_size, 1, kernel_stride, 1, pad, 0);
+
+                const int init_blocks = 1;
+                const int local_blocks = 2;
+                //set inf in init_blocks and -inf in local_blocks
+                for(int i = 0; i < score->ne[2]; i++){
+                    for(int j = 0; j < score->ne[1]; j++){
+                        for(int ii = 0; ii < init_blocks; ii++){
+                            ggml_set_f32_nd(score, ii, j, i, 0, FLT_MAX);
+                        }
+                        for(int li = 0; li < local_blocks; li++){
+                            ggml_set_f32_nd(score, score->ne[0] - local_blocks + li, j, i, 0, -FLT_MAX);
+                        }
+                    }
+                }
+                
+            }
+
+            //topk
+            topk_idx = ggml_top_k(ctx0, score, topk); // [topk, seq_l_q, n_kv]
+            //set -1 if topk_idx >= q_idx
+            //fused in block_sparse_attn
+        }
+
+        //stage2
+        {
+            cur = ggml_block_sparse_attn_ext(ctx0, q, k, v, topk_idx, topk, block_size, block_window_size, kq_scale,
+                                    hparams.attn_soft_cap ? hparams.f_attn_logit_softcapping : 0.0f);
+
+            ggml_block_sparse_attn_ext_set_prec(cur, GGML_PREC_F32);
+        }
+
+        if (v_mla) {
+#if 0
+            // v_mla can be applied as a matrix-vector multiplication with broadcasting across dimension 3 == n_tokens.
+            // However, the code is optimized for dimensions 0 and 1 being large, so this is ineffient.
+            cur = ggml_reshape_4d(ctx0, cur, v_mla->ne[0], 1, n_head, n_tokens);
+            cur = ggml_mul_mat(ctx0, v_mla, cur);
+#else
+            // It's preferable to do the calculation as a matrix-matrix multiplication with n_tokens in dimension 1.
+            // The permutations are noops and only change how the tensor data is interpreted.
+            cur = ggml_permute(ctx0, cur, 0, 2, 1, 3);
+            cur = ggml_mul_mat(ctx0, v_mla, cur);
+            cur = ggml_permute(ctx0, cur, 0, 2, 1, 3);
+            cur = ggml_cont(ctx0, cur); // Needed because ggml_reshape_2d expects contiguous inputs.
+#endif
+        }
+
+        cur = ggml_reshape_2d(ctx0, cur, cur->ne[0]*n_head, n_tokens);
     }
 
     ggml_build_forward_expand(gf, cur);

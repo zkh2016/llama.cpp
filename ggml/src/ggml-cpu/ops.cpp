@@ -7177,6 +7177,21 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
     GGML_ASSERT((                            q_to_vec_dot) && "fattn: unsupported K-type");
     GGML_ASSERT((v->type == GGML_TYPE_F32 || v_to_float  ) && "fattn: unsupported V-type");
 
+    {//preprocess topk_idx
+        int* topk_idx_data = (int*)topk_idx->data;
+        for(int i = 0; i < topk_idx->ne[2]; i++){ //groups
+            for(int j = 0; j < topk_idx->ne[1]; j++){ //seq_l_q
+                for(int l = 0; l < topk_idx->ne[0]; j++){ //top_k
+                    const int q_id = j / block_size;
+                    int topk_id = topk_idx_data[i * topk_idx->nb[2] + j * topk_idx->nb[1] + l];
+                    if(topk_id >= q_id){
+                        topk_idx_data[i * topk_idx->nb[2] + j * topk_idx->nb[1] + l] = -1;
+                    }
+                }
+            }
+        }
+    }
+
     // loop over n_batch and n_head
     for (int ir = ir0; ir < ir1; ++ir) {
         // q indices
