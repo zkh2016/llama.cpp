@@ -1868,6 +1868,7 @@ extern "C" {
             int                   block_size,
             int                   block_window_size,
             float                 scale,
+            float                 max_bias,
             float                 logit_softcap);
 
     GGML_API void ggml_block_sparse_attn_ext_set_prec(

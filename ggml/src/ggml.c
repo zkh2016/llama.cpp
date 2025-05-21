@@ -4391,6 +4391,11 @@ struct ggml_tensor * ggml_flash_attn_ext(
     GGML_ASSERT(ggml_can_mul_mat(k, q));
     // TODO: check if vT can be multiplied by (k*qT)
 
+    printf("flash k: %d\n", k->type);
+    printf("flash k: %d %d %d %d\n", k->ne[0], k->ne[1], k->ne[2], k->ne[3]);
+    printf("flash k: %d %d %d %d\n", k->nb[0], k->nb[1], k->nb[2], k->nb[3]);
+    GGML_ASSERT(false);
+
     if (mask) {
         GGML_ASSERT(ggml_is_contiguous(mask));
         GGML_ASSERT(mask->ne[2] == 1);
@@ -4452,6 +4457,7 @@ struct ggml_tensor * ggml_block_sparse_attn_ext(
         int                   block_size,
         int                   block_window_size,
         float                 scale,
+        float                 max_bias,
         float                 logit_softcap) {
     GGML_ASSERT(ggml_can_mul_mat(k, q));
     // TODO: check if vT can be multiplied by (k*qT)
@@ -4460,8 +4466,12 @@ struct ggml_tensor * ggml_block_sparse_attn_ext(
     int64_t ne[4] = { v->ne[0], q->ne[2], q->ne[1], q->ne[3] };
     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
 
-    float params[] = { scale, logit_softcap, topk, block_size, block_window_size};
+    // printf("topk = %d, block_size=%d, block_window_size=%d\n", topk, block_size, block_window_size);
+    float params[] = { scale, logit_softcap, max_bias};
     ggml_set_op_params(result, params, sizeof(params));
+    ggml_set_op_params_i32(result, 4, block_size);
+    ggml_set_op_params_i32(result, 5, block_window_size);
+    ggml_set_op_params_i32(result, 6, topk);
 
     result->op     = GGML_OP_BLOCK_SPARSE_ATTN_EXT;
     result->src[0] = q;

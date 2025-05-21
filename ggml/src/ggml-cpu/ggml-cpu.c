@@ -1257,6 +1257,13 @@ static void ggml_compute_forward_mul_mat(
     const struct ggml_tensor * src0 = dst->src[0];
     const struct ggml_tensor * src1 = dst->src[1];
 
+    // if(strcmp(src0->name, "cache_k_l0 (view)") == 0){
+    //     printf("k %d\n", src0->type);
+    //     printf("%d %d %d %d\n", src0->ne[0], src0->ne[1], src0->ne[2], src0->ne[3]);
+    //     printf("%d %d %d %d\n", src0->nb[0], src0->nb[1], src0->nb[2], src0->nb[3]);
+    //     GGML_ASSERT(false);
+    // }
+
     GGML_TENSOR_BINARY_OP_LOCALS
 
     const int ith = params->ith;
