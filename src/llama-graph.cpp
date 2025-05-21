@@ -1245,7 +1245,11 @@ ggml_tensor * llm_graph_context::build_attn_mha(
 
         cur = ggml_reshape_2d(ctx0, cur, cur->ne[0]*n_head, n_tokens);
     } else {
+        printf("q: %d %d %d %d\n", q->ne[0], q->ne[1], q->ne[2], q->ne[3]);
+        printf("k: %d %d %d %d\n", k->ne[0], k->ne[1], k->ne[2], k->ne[3]);
+        printf("v: %d %d %d %d\n", v->ne[0], v->ne[1], v->ne[2], v->ne[3]);
         ggml_tensor * kq = ggml_mul_mat(ctx0, k, q);
+        printf("after k* q, kq:%d %d %d %d\n", kq->ne[0], kq->ne[1], kq->ne[3], kq->ne[3]);
 
         // note: this op tends to require high floating point range
         //       while for some models F16 is enough, for others it is not, so we default to F32 here
@@ -1280,6 +1284,7 @@ ggml_tensor * llm_graph_context::build_attn_mha(
         }
 
         ggml_tensor * kqv = ggml_mul_mat(ctx0, v, kq);
+        printf("kqv:%d %d %d %d\n", kqv->ne[0], kqv->ne[1], kqv->ne[3], kqv->ne[3]);
 
         // for MLA with the absorption optimization, we need to "decompress" from MQA back to MHA
         if (v_mla) {
@@ -1324,11 +1329,30 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
     const auto n_tokens = q->ne[1];
     const auto n_head   = q->ne[2];
     const auto n_kv     = k->ne[1];
+    // printf("n_kv = %d, n_head = %d\n", n_kv, n_head);
+    printf("q: %d %d %d %d\n", q->ne[0], q->ne[1], q->ne[2], q->ne[3]);
+    printf("k-ne %d: %d %d %d %d\n", k->type, k->ne[0], k->ne[1], k->ne[2], k->ne[3]);
+    printf("k-nb: %d %d %d %d\n", k->nb[0], k->nb[1], k->nb[2], k->nb[3]);
+    // printf("v: %d %d %d %d\n", v->ne[0], v->ne[1], v->ne[2], v->ne[3]);
+    /*
+    load:
+    q: 128 512 32 1
+    k: 128 4096 2 1
+    v: 4096 128 2 1
+    compute:
+    q: 128 14 32 1
+    k: 128 32 2 1
+    v: 32 128 2 1
+
+    q: 128 1 32 1
+    k: 128 32 2 1
+    v: 32 128 2 1
+    */
 
     ggml_tensor * cur;
 
-    GGML_ASSERT(cparams.flash_attn);
-    GGML_ASSERT(n_kv % 256 == 0);
+    // GGML_ASSERT(cparams.flash_attn);
+    // GGML_ASSERT(n_kv % 256 == 0);
     GGML_ASSERT(kq_b == nullptr);
 
     {
@@ -1359,16 +1383,7 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
             {
                 const int kernel_size = 32;
                 const int kernel_stride = 16;
-                ggml_tensor* t_k = ggml_reshape_4d(ctx0, 
-                        ggml_permute(ctx0, k, 1, 0, 2, 3),
-                            k->ne[1], 1, k->ne[0] * k->ne[2], k->ne[3]); //[head_dim, seq_l_k num_kv_heads, batch_size] -> [seq_l_k, 1, head_dim * num_kv_heads, batch_size]
-                compress_k = ggml_pool_2d(ctx0, t_k, GGML_OP_POOL_AVG, kernel_size, 1, kernel_stride, 1, 0, 0);
-
-                compress_k = ggml_permute(ctx0,
-                    ggml_reshape_4d(ctx0, 
-                        compress_k,
-                            compress_k->ne[0], k->ne[0], k->ne[2], k->ne[3]),
-                            1, 0, 2, 3); //[seq_l_k, 1, head_dim * num_kv_heads, batch_size] -> [head_dim, seq_l_k, num_kv_heads, batch_size]
+                compress_k = ggml_pool_2d(ctx0, k, GGML_OP_POOL_AVG, 1, kernel_size, 1, kernel_stride, 0, 0);
             }
 
             //attention
@@ -1406,46 +1421,47 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
 
             //reduce head_dim
             {
-                //kq: [seq_l_k, seq_l_q * n_head_k * group] -> [seq_l_k, seq_l_q, n_head_k]
-                const int groups = n_head / n_kv;
-                ggml_tensor* tmp_kq = ggml_permute(ctx0, 
-                    ggml_reshape_4d(ctx0, kq, kq->ne[0], kq->ne[1], n_kv, groups),
-                        3, 0, 1, 2); 
-                kq = ggml_sum_rows(ctx0, tmp_kq);
+                //kq: [seq_l_k, seq_l_q, n_head_k * group, 1] -> [seq_l_k, seq_l_q, n_head_k]
+                const int groups = q->ne[2] / k->ne[2];
+                // printf("kq:%d %d %d %d\n", kq->ne[0], kq->ne[1], kq->ne[2], kq->ne[3]);
+                // printf("kq:%d %d %d %d\n", kq->nb[0], kq->nb[1], kq->nb[2], kq->nb[3]);
+                // ggml_tensor* new_kq = ggml_reshape_4d(ctx0, kq, kq->ne[0] * kq->ne[1] * k->ne[2], groups, 1, 1);
+                ggml_tensor* new_kq = ggml_reshape_4d(ctx0, kq, kq->ne[0], kq->ne[1], k->ne[2], groups);
+                // printf("before sum kq:%d %d %d %d\n", new_kq->ne[0], new_kq->ne[1], new_kq->ne[2], new_kq->ne[3]);
+                // printf("before sum kq:%d %d %d %d\n", new_kq->nb[0], new_kq->nb[1], new_kq->nb[2], new_kq->nb[3]);
+                // new_kq = ggml_sum_rows(ctx0, ggml_transpose(ctx0, new_kq));
+                kq = ggml_sum_first_dim(ctx0, new_kq);
+                // printf("kq:%d %d %d %d\n", kq->ne[0], kq->ne[1], kq->ne[2], kq->ne[3]);
+                // kq = ggml_reshape_4d(ctx0, new_kq, kq->ne[0], kq->ne[1], k->ne[2], 1);
             }
 
             //transform score
             ggml_tensor* score;
             {
+                // printf("transform score\n");
                 const int kernel_size = 5;
                 const int kernel_stride = 4;
                 const int pad = 1;
-                score = ggml_pool_2d(ctx0, kq, GGML_OP_POOL_MAX, kernel_size, 1, kernel_stride, 1, pad, 0);
-
-                const int init_blocks = 1;
-                const int local_blocks = 2;
-                //set inf in init_blocks and -inf in local_blocks
-                for(int i = 0; i < score->ne[2]; i++){
-                    for(int j = 0; j < score->ne[1]; j++){
-                        for(int ii = 0; ii < init_blocks; ii++){
-                            ggml_set_f32_nd(score, ii, j, i, 0, FLT_MAX);
-                        }
-                        for(int li = 0; li < local_blocks; li++){
-                            ggml_set_f32_nd(score, score->ne[0] - local_blocks + li, j, i, 0, -FLT_MAX);
-                        }
-                    }
-                }
-                
+                // printf("pool2d\n");
+                // printf("kq:%d %d %d %d\n", kq->ne[0], kq->ne[1], kq->ne[2], kq->ne[3]);
+                score = ggml_transform_score(ctx0, kq, GGML_OP_POOL_MAX, kernel_size, 1, kernel_stride, 1, pad, 0);
+                // score = ggml_pool_2d(ctx0, kq, GGML_OP_POOL_MAX, kernel_size, 1, kernel_stride, 1, pad, 0);
+                // printf("score: %d %d %d %d\n", score->ne[0], score->ne[1], score->ne[2], score->ne[3]);
+                // printf("score: %d %d %d %d\n", score->nb[0], score->nb[1], score->nb[2], score->nb[3]);
+                // printf("score dtype = %d, %d\n", score->type, score->data);
             }
 
+            // printf("topk\n");
             //topk
             topk_idx = ggml_top_k(ctx0, score, topk); // [topk, seq_l_q, n_kv]
+            // printf("after topk\n");
             //set -1 if topk_idx >= q_idx
             //fused in block_sparse_attn
         }
 
         //stage2
         {
+            // printf("blocks sparse attn\n");
             cur = ggml_block_sparse_attn_ext(ctx0, q, k, v, topk_idx, topk, block_size, block_window_size, kq_scale,
                                     hparams.attn_soft_cap ? hparams.f_attn_logit_softcapping : 0.0f);
 
@@ -1544,13 +1560,19 @@ llm_graph_input_attn_kv_unified * llm_graph_context::build_attn_inp_kv_unified()
 
     auto inp = std::make_unique<llm_graph_input_attn_kv_unified>(hparams, cparams, kv_self);
 
-    const auto n_kv = kv_self->n;
+    int kernel_size = 32;
+    int kernel_stride = 16;
+
+    // const auto n_kv = kv_self->n;
+    const auto n_kv = (kv_self->n - kernel_size) / kernel_stride + 1;
 
     inp->self_kq_mask = ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, n_kv, GGML_PAD(n_tokens, GGML_KQ_MASK_PAD));
     //cb(inp->self_kq_mask, "KQ_mask", -1);
     ggml_set_input(inp->self_kq_mask);
+    printf("build kv mask: %d %d\n", n_kv, n_tokens);
 
-    inp->self_kq_mask_cnv = cparams.flash_attn ? ggml_cast(ctx0, inp->self_kq_mask, GGML_TYPE_F16) : inp->self_kq_mask;
+    // inp->self_kq_mask_cnv = cparams.flash_attn ? ggml_cast(ctx0, inp->self_kq_mask, GGML_TYPE_F16) : inp->self_kq_mask;
+    inp->self_kq_mask_cnv = inp->self_kq_mask;
 
     if (hparams.n_swa_pattern > 1) {
         GGML_ASSERT(hparams.n_swa > 0);
@@ -1658,7 +1680,8 @@ ggml_tensor * llm_graph_context::build_attn(
                 ggml_element_size(kv_self->v_l[il])*n_ctx*n_embd_head_v,
                 0);
 
-    ggml_tensor * cur = build_attn_mha(gf, q, k, v, kq_b, kq_mask, v_mla, v_trans, kq_scale);
+    // ggml_tensor * cur = build_attn_mha(gf, q, k, v, kq_b, kq_mask, v_mla, v_trans, kq_scale);
+    ggml_tensor * cur = build_block_sparse_attn_mha(gf, q, k, v, kq_b, kq_mask, v_mla, v_trans, kq_scale);
     cb(cur, "kqv_out", il);
 
     if (wo) {

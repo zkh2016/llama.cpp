@@ -877,6 +877,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
     "COS",
     "SUM",
     "SUM_ROWS",
+    "SUM_FIRST_DIM",
     "MEAN",
     "ARGMAX",
     "COUNT_EQUAL",
@@ -931,6 +932,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
     "FLASH_ATTN_EXT",
     "FLASH_ATTN_BACK",
     "BLOCK_SPARSE_ATTN_EXT",
+    "TRANSFORM_SCORE",
     "SSM_CONV",
     "SSM_SCAN",
     "WIN_PART",
@@ -954,7 +956,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
     "OPT_STEP_ADAMW",
 };
 
-static_assert(GGML_OP_COUNT == 83, "GGML_OP_COUNT != 83");
+static_assert(GGML_OP_COUNT == 85, "GGML_OP_COUNT != 85");
 
 static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "none",
@@ -973,6 +975,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "cos(x)",
     "Σx",
     "Σx_k",
+    "Σx_k_n",
     "Σx/n",
     "argmax(x)",
     "count_equal(x)",
@@ -1027,6 +1030,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "flash_attn_ext(x)",
     "flash_attn_back(x)",
     "block_sparse_attn_ext(x)",
+    "transform_score(x)",
     "ssm_conv(x)",
     "ssm_scan(x)",
     "win_part(x)",
@@ -1050,7 +1054,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "adamw(x)",
 };
 
-static_assert(GGML_OP_COUNT == 83, "GGML_OP_COUNT != 83");
+static_assert(GGML_OP_COUNT == 85, "GGML_OP_COUNT != 85");
 
 static_assert(GGML_OP_POOL_COUNT == 2, "GGML_OP_POOL_COUNT != 2");
 
@@ -2214,6 +2218,23 @@ struct ggml_tensor * ggml_sum_rows(
     struct ggml_tensor * result = ggml_new_tensor(ctx, a->type, GGML_MAX_DIMS, ne);
 
     result->op     = GGML_OP_SUM_ROWS;
+    result->src[0] = a;
+
+    return result;
+}
+
+struct ggml_tensor * ggml_sum_first_dim(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * a) {
+    int64_t ne[GGML_MAX_DIMS] = { 1 };
+    for (int i = 0; i < GGML_MAX_DIMS-1; ++i) {
+        ne[i] = a->ne[i];
+    }
+    ne[GGML_MAX_DIMS-1] = 1;
+
+    struct ggml_tensor * result = ggml_new_tensor(ctx, a->type, GGML_MAX_DIMS, ne);
+
+    result->op     = GGML_OP_SUM_FIRST_DIM;
     result->src[0] = a;
 
     return result;
@@ -4470,6 +4491,33 @@ enum ggml_prec ggml_block_sparse_attn_ext_get_prec(
     return (enum ggml_prec) prec_i32;
 }
 
+struct ggml_tensor * ggml_transform_score(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * a,
+        enum ggml_op_pool     op,
+        int                   k0,
+        int                   k1,
+        int                   s0,
+        int                   s1,
+        float                 p0,
+        float                 p1) {
+    struct ggml_tensor * result;
+    const int64_t ne[4] = {
+        ggml_calc_pool_output_size(a->ne[0], k0, s0, p0),
+        ggml_calc_pool_output_size(a->ne[1], k1, s1, p1),
+        a->ne[2],
+        a->ne[3],
+    };
+    result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
+
+    int32_t params[] = { op, k0, k1, s0, s1, p0, p1 };
+    ggml_set_op_params(result, params, sizeof(params));
+
+
+    result->op     = GGML_OP_TRANSFORM_SCORE;
+    result->src[0] = a;
+    return result;
+}
 
 // ggml_flash_attn_back
 

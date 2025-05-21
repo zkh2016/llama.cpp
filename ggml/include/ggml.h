@@ -443,6 +443,7 @@ extern "C" {
         GGML_OP_COS,
         GGML_OP_SUM,
         GGML_OP_SUM_ROWS,
+        GGML_OP_SUM_FIRST_DIM,
         GGML_OP_MEAN,
         GGML_OP_ARGMAX,
         GGML_OP_COUNT_EQUAL,
@@ -497,6 +498,7 @@ extern "C" {
         GGML_OP_FLASH_ATTN_EXT,
         GGML_OP_FLASH_ATTN_BACK,
         GGML_OP_BLOCK_SPARSE_ATTN_EXT,
+        GGML_OP_TRANSFORM_SCORE,
         GGML_OP_SSM_CONV,
         GGML_OP_SSM_SCAN,
         GGML_OP_WIN_PART,
@@ -909,6 +911,10 @@ extern "C" {
 
     // sums along rows, with input shape [a,b,c,d] return shape [1,b,c,d]
     GGML_API struct ggml_tensor * ggml_sum_rows(
+            struct ggml_context * ctx,
+            struct ggml_tensor  * a);
+
+    GGML_API struct ggml_tensor * ggml_sum_first_dim(
             struct ggml_context * ctx,
             struct ggml_tensor  * a);
 
@@ -1870,6 +1876,16 @@ extern "C" {
 
     GGML_API enum ggml_prec ggml_block_sparse_attn_ext_get_prec(
             const struct ggml_tensor * a);
+    GGML_API struct ggml_tensor * ggml_transform_score(
+                struct ggml_context * ctx,
+                struct ggml_tensor  * a,
+                enum ggml_op_pool     op,
+                int                   k0,
+                int                   k1,
+                int                   s0,
+                int                   s1,
+                float                 p0,
+                float                 p1);
 
 
     GGML_API struct ggml_tensor * ggml_ssm_conv(

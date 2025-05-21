@@ -2004,6 +2004,27 @@ void ggml_compute_forward_sum_rows(
     }
 }
 
+void ggml_compute_forward_sum_first_dim(
+        const ggml_compute_params * params,
+        ggml_tensor * dst) {
+
+    struct ggml_tensor* src = dst->src[0];
+    GGML_ASSERT(src->type == GGML_TYPE_F32);
+
+    for(int i = 0; i < src->ne[2]; i++){
+        for(int j = 0; j < src->ne[1]; j++){
+            for(int k = 0; k < src->ne[0]; k++){
+                float sum = 0;
+                for(int l = 0; l < src->ne[3]; l++){
+                    float* data = (float*)src->data;
+                    sum += data[l * src->nb[3] + k * src->nb[0] + j * src->nb[1] + i * src->nb[2]];
+                }
+                ((float*)dst->data)[i * dst->nb[2] + j * dst->nb[1] + k * dst->nb[0]] = sum;
+            }
+        }
+    }
+}
+
 // ggml_compute_forward_mean
 
 static void ggml_compute_forward_mean_f32(
@@ -6326,7 +6347,27 @@ void ggml_compute_forward_pool_2d(
     const int ka = k0 * k1;
     const int offset0 = -p0;
     const int offset1 = -p1;
+    {
+        printf("pool2d src %d: %d %d %d %d\n", src->type, src->ne[0], src->ne[1], src->ne[2], src->ne[3]);
+        printf("pool2d param: %d %d %d %d %d %d\n", k0, k1, s0, s1, p0, p1);
+        /*
+        pool2d src 1: 128 512 2 1
+        pool2d param: 1 32 1 16 0 0
+        pool2d dst 0: 128 31 2 1
+        */
+        FILE *fp = fopen("pool2d_src.bin", "w");
+        fwrite(src->data, 1, ggml_nelements(src) * sizeof(int16_t), fp);
+        fclose(fp);
+    }
+    // ggml_fp16_t * fdata = (ggml_fp16_t*)src->data;
+    for(int i = 0; i < 32; i++){
+        const void * srow = (const void *)(cdata + src->nb[1] * i);
+        // printf("%f ", GGML_FP16_TO_FP32(fdata[i * src->ne[0]]));
+        printf("%f ", GGML_FP16_TO_FP32(((ggml_fp16_t*)srow)[0]));
+    }
+    printf("\n");
 
+    int it = 0;
     while (cdata < data_end) {
         for (int oy = 0; oy < py; ++oy) {
             float * const drow = dplane + oy * px;
@@ -6348,6 +6389,9 @@ void ggml_compute_forward_pool_2d(
                         int j = ix + kx;
                         if (j < 0 || j >= src->ne[0]) continue;
                         const float srow_j = (src->type == GGML_TYPE_F32) ? ((const float*)srow)[j] : GGML_FP16_TO_FP32(((const ggml_fp16_t*)srow)[j]);
+                        if(it == 0){
+                            printf("%d %d %d %d, %d, %d: %f\n", oy, s1, iy, ky, j, src->nb[1], srow_j);
+                        }
                         switch (op) {
                             case GGML_OP_POOL_AVG:                     *out += srow_j; break;
                             case GGML_OP_POOL_MAX: if (srow_j > *out)  *out  = srow_j; break;
@@ -6355,17 +6399,28 @@ void ggml_compute_forward_pool_2d(
                         }
                     }
                 }
+                if(it == 0){
+                    printf("\n");
+                }
                 switch (op) {
                     case GGML_OP_POOL_AVG:           *out /= ka; break;
                     case GGML_OP_POOL_MAX:                       break;
                     case GGML_OP_POOL_COUNT: GGML_ABORT("fatal error");
                 }
+                ++it;
             }
         }
 
         cdata  += src->nb[2];
         dplane += pa;
     }
+    {
+        printf("pool2d dst %d: %d %d %d %d\n", dst->type, dst->ne[0], dst->ne[1], dst->ne[2], dst->ne[3]);
+        FILE *fp = fopen("pool2d_dst.bin", "w");
+        fwrite(dst->data, 1, ggml_nelements(dst) * sizeof(float), fp);
+        fclose(fp);
+    }
+    GGML_ASSERT(false);
 }
 
 // ggml_compute_forward_pool_2d_back
@@ -7109,6 +7164,15 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
     GGML_ASSERT(ne0 == DV);
     GGML_ASSERT(ne2 == N);
 
+
+    // printf("q dtype = %d\n", q->type);
+    // printf("k dtype = %d\n", k->type);
+    // printf("v dtype = %d\n", v->type);
+    // printf("v: %d %d %d %d, %d %d %d %d\n", 
+    //     v->ne[0], v->ne[1], v->ne[2], v->ne[3],
+    //     v->nb[0], v->nb[1], v->nb[2], v->nb[3]
+    // );
+
     // input tensor rows must be contiguous
     GGML_ASSERT(nbq0 == ggml_type_size(q->type));
     GGML_ASSERT(nbk0 == ggml_type_size(k->type));
@@ -7187,7 +7251,9 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
                     if(topk_id >= q_id){
                         topk_idx_data[i * topk_idx->nb[2] + j * topk_idx->nb[1] + l] = -1;
                     }
+                    // printf("%d ", topk_id);
                 }
+                // printf("\n");
             }
         }
     }
@@ -7377,6 +7443,34 @@ void ggml_compute_forward_block_sparse_attn_ext(
             {
                 GGML_ABORT("fatal error");
             }
+    }
+}
+
+void ggml_compute_forward_transform_score(
+        const ggml_compute_params * params,
+        ggml_tensor * dst){
+    // printf("pool 2d\n");
+    ggml_compute_forward_pool_2d(params, dst);
+    // printf("after pool 2d\n");
+
+    ggml_tensor* score = dst;
+    
+    // printf("score: %d %d %d %d\n", score->ne[0], score->ne[1], score->ne[2], score->ne[3]);
+    // printf("score: %d %d %d %d\n", score->nb[0], score->nb[1], score->nb[2], score->nb[3]);
+    // printf("score dtype = %d, %d\n", score->type, score->data);
+
+    const int init_blocks = 1;
+    const int local_blocks = 2;
+    //set inf in init_blocks and -inf in local_blocks
+    for(int i = 0; i < score->ne[2]; i++){
+        for(int j = 0; j < score->ne[1]; j++){
+            for(int ii = 0; ii < init_blocks; ii++){
+                ggml_set_f32_nd(score, ii, j, i, 0, FLT_MAX);
+            }
+            for(int li = 0; li < local_blocks; li++){
+                ggml_set_f32_nd(score, score->ne[0] - local_blocks + li, j, i, 0, -FLT_MAX);
+            }
+        }
     }
 }
 

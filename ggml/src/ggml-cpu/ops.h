@@ -30,6 +30,7 @@ void ggml_compute_forward_add1(const struct ggml_compute_params * params, struct
 void ggml_compute_forward_acc(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_sum(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_sum_rows(const struct ggml_compute_params * params, struct ggml_tensor * dst);
+void ggml_compute_forward_sum_first_dim(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_mean(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_argmax(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_count_equal(const struct ggml_compute_params * params, struct ggml_tensor * dst);
@@ -89,6 +90,9 @@ void ggml_compute_forward_block_sparse_attn_ext(
     const struct ggml_tensor * k,
     const struct ggml_tensor * v,
     const struct ggml_tensor * topk_idx,
+    struct ggml_tensor * dst);
+void ggml_compute_forward_transform_score(
+    const struct ggml_compute_params * params,
     struct ggml_tensor * dst);
 void ggml_compute_forward_flash_attn_back(
         const struct ggml_compute_params * params,
