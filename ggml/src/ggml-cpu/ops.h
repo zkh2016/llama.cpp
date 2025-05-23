@@ -69,6 +69,7 @@ void ggml_compute_forward_conv_transpose_2d(const struct ggml_compute_params * p
 void ggml_compute_forward_conv_2d_dw(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_pool_1d(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_pool_2d(const struct ggml_compute_params * params, struct ggml_tensor * dst);
+void ggml_compute_forward_compress_k(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_pool_2d_back(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_upscale(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_pad(const struct ggml_compute_params * params, struct ggml_tensor * dst);

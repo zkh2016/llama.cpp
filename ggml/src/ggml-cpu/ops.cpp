@@ -2011,18 +2011,25 @@ void ggml_compute_forward_sum_first_dim(
     struct ggml_tensor* src = dst->src[0];
     GGML_ASSERT(src->type == GGML_TYPE_F32);
 
-    for(int i = 0; i < src->ne[2]; i++){
+    for(int i = 0; i < src->ne[3]; i++){
         for(int j = 0; j < src->ne[1]; j++){
             for(int k = 0; k < src->ne[0]; k++){
                 float sum = 0;
-                for(int l = 0; l < src->ne[3]; l++){
-                    float* data = (float*)src->data;
-                    sum += data[l * src->nb[3] + k * src->nb[0] + j * src->nb[1] + i * src->nb[2]];
+                for(int l = 0; l < src->ne[2]; l++){
+                    char* data = (char*)src->data;
+                    sum += ((float*)(data + l * src->nb[2] + k * src->nb[0] + j * src->nb[1] + i * src->nb[3]))[0];
                 }
-                ((float*)dst->data)[i * dst->nb[2] + j * dst->nb[1] + k * dst->nb[0]] = sum;
+                ((float*)((char*)dst->data + i * dst->nb[2] + j * dst->nb[1] + k * dst->nb[0]))[0] = sum;
             }
         }
     }
+    // {
+    //     printf("sum_first_dim: %d %d %d %d\n", dst->ne[0], dst->ne[1], dst->ne[2], dst->ne[3]);
+    //     FILE *fp = fopen("sum_first_dim.bin", "w");
+    //     fwrite(dst->data, 1, ggml_nelements(dst) * sizeof(float), fp);
+    //     fclose(fp);
+    //     // GGML_ASSERT(false);
+    // }
 }
 
 // ggml_compute_forward_mean
@@ -4283,6 +4290,14 @@ static void ggml_compute_forward_get_rows_f32(
 
     const ggml_tensor * src0 = dst->src[0];
     const ggml_tensor * src1 = dst->src[1];
+    // {
+    //     FILE *fp = fopen("input_ids.bin", "w");
+    //     fwrite(src1->data, 1, sizeof(int) * ggml_nelements(src1), fp);
+    //     fclose(fp);
+    //     printf("src0.name = %s\n", src0->name);
+    //     printf("input_id: %d %d %d %d\n", src1->ne[0], src1->ne[1], src1->ne[2], src1->ne[3]);
+    //     printf("id0 = %d\n", ((int*)src1->data)[0]);
+    // }
 
     GGML_TENSOR_BINARY_OP_LOCALS
 
@@ -4310,6 +4325,9 @@ static void ggml_compute_forward_get_rows_f32(
         const int64_t i10 = (i - i12*ne11*ne10 - i11*ne10);
         const int64_t i01 = *(int32_t *) ((char *) src1->data + i10*nb10 + i11*nb11 + i12*nb12);
 
+        if(i01 < 0 || i01 >= ne01){
+            printf("i01 = %d\n", i01);
+        }
         GGML_ASSERT(i01 >= 0 && i01 < ne01);
 
         ggml_vec_cpy_f32(nc,
@@ -4710,6 +4728,10 @@ static void ggml_compute_forward_soft_max_f32(
     //     fclose(fp);
 
     // }
+    // GGML_ASSERT(false);
+    const int kernel_size = 32;
+    const int kernel_stride = 16;
+    int real_k = (ne01 - kernel_size) / kernel_stride + 1;
 
     for (int i1 = ir0; i1 < ir1; i1++) {
         // ALiBi
@@ -4723,19 +4745,33 @@ static void ggml_compute_forward_soft_max_f32(
         // broadcast the mask across rows
         ggml_fp16_t * mp_f16 = src1 ? (ggml_fp16_t *)((char *) src1->data) + (i1%ne01)*ne00 : NULL;
         float       * mp_f32 = src1 ? (float       *)((char *) src1->data) + (i1%ne01)*ne00 : NULL;
-
         ggml_vec_cpy_f32  (nc, wp, sp);
         ggml_vec_scale_f32(nc, wp, scale);
-        if (mp_f32) {
+        bool mask_all = ne01 > 1;
+        // if (mp_f32 && ne01 > 1) {
+        {
             if (use_f16) {
                 for (int i = 0; i < nc; ++i) {
                     // wp[i] += slope*GGML_FP16_TO_FP32(mp_f16[i]);
-                    wp[i] += slope * (iq < i ? 1.0 : -FLT_MAX);
+                    // wp[i] += slope * (iq >= i && i < ne01 ? 0.0 : -INFINITY);
+                    if(ne01 > 1){
+                        wp[i] += slope * (i < (iq - 15) / 16 && i < real_k ? 0.0 : -100.0);
+                        if(i < (iq - 15) / 16 && i < real_k) mask_all = false;
+                    }else{
+                        wp[i] += slope * (i < real_k ? 0.0 : -100.0);
+                    }
+                   
                 }
             } else {
                 for (int i = 0; i < nc; ++i) {
                     // wp[i] += slope*mp_f32[i];
-                    wp[i] += slope * (iq < i ? 1.0 : -FLT_MAX);
+                    // wp[i] += slope * (iq >= i && i<ne01 ? 0.0 : -INFINITY);
+                    if(ne01 > 1){
+                        wp[i] += slope * (i < (iq - 15) / 16 && i < real_k ? 0.0 : -100.0); 
+                        if(i < (iq - 15) / 16 && i < real_k) mask_all = false;
+                    }else{
+                        wp[i] += slope * (i < real_k ? 0.0 : -100.0);
+                    }
                 }
             }
         }
@@ -4747,8 +4783,10 @@ static void ggml_compute_forward_soft_max_f32(
         }
 #endif
 
-        float max = -INFINITY;
+        float max = -100.0;
+       
         ggml_vec_max_f32(nc, &max, wp);
+         if(mask_all) max = 0.0f;
 
         // printf("max = %f\n", max);
         // for(int i = 0; i < nc; i++){
@@ -4756,22 +4794,55 @@ static void ggml_compute_forward_soft_max_f32(
         // }
 
         ggml_float sum = ggml_vec_soft_max_f32(nc, dp, wp, max);
-        // for(int i = 0; i < nc; i++){
-        //     printf("%f ", dp[i]);
-        // }
-        // printf("\n\n");
-        assert(sum > 0.0);
+    //    if(i1 == 0){
+    //         printf("mask_all = %d, max = %f, sum = %f\n", mask_all, max, sum);
+    //         printf("wp:");
+    //         for(int i = 0; i < nc; i++){
+    //             printf("%f ", wp[i]);
+    //         }
+    //         printf("\n");
+    //         printf("dp:");
+    //         for(int i = 0; i < nc; i++){
+    //             printf("%f ", dp[i]);
+    //         }
+    //         printf("\n\n");
+    //     }
+       
+        assert(sum >= 0.0);
 
         sum = 1.0/sum;
+        if(mask_all) sum = 0.0;
         ggml_vec_scale_f32(nc, dp, sum);
+        //  if(i1 == 0){
+        //     printf("mask_all = %d, max = %f, sum = %f\n", mask_all, max, sum);
+        //     printf("wp:");
+        //     for(int i = 0; i < nc; i++){
+        //         printf("%f ", wp[i]);
+        //     }
+        //     printf("\n");
+        //     printf("dp:");
+        //     for(int i = 0; i < nc; i++){
+        //         printf("%f ", dp[i]);
+        //     }
+        //     printf("\n\n");
+        // }
 
 #ifndef NDEBUG
         for (int i = 0; i < nc; ++i) {
-            assert(!isnan(dp[i]));
-            assert(!isinf(dp[i]));
+           // assert(!isnan(dp[i]));
+           // assert(!isinf(dp[i]));
         }
 #endif
     }
+    // {
+    //     FILE *fp = fopen("softmax_out.bin", "w");
+    //     printf("softmax dst: %d\n", dst->type);
+    //     printf("%d %d %d %d\n", dst->ne[0], dst->ne[1], dst->ne[2], dst->ne[3]);
+    //     printf("%d %d %d %d\n", dst->nb[0], dst->nb[1], dst->nb[2], dst->nb[3]);
+    //     fwrite(dst->data, 1, ggml_nelements(dst) * sizeof(float), fp);
+    //     fclose(fp);
+    //     // GGML_ASSERT(false);
+    // }
 }
 
 void ggml_compute_forward_soft_max(
@@ -6390,9 +6461,11 @@ void ggml_compute_forward_pool_2d(
     //     pool2d param: 1 32 1 16 0 0
     //     pool2d dst 0: 128 31 2 1
     //     */
+    //    printf("name: %s\n", src->name);
     //     FILE *fp = fopen("pool2d_src.bin", "w");
     //     fwrite(src->data, 1, ggml_nelements(src) * sizeof(int16_t), fp);
     //     fclose(fp);
+    //     // GGML_ASSERT(false);
     // }
     // ggml_fp16_t * fdata = (ggml_fp16_t*)src->data;
     // for(int i = 0; i < 32; i++){
@@ -6401,6 +6474,34 @@ void ggml_compute_forward_pool_2d(
     //     printf("%f ", GGML_FP16_TO_FP32(((ggml_fp16_t*)srow)[0]));
     // }
     // printf("\n");
+
+    // {
+    //     printf("%d %d %d\n", src->ne[2], src->ne[1], src->ne[0]);
+    //     std::vector<float> tmp;
+    //     size_t offset = 0;
+    //     for(int i = 0; i < src->ne[2]; i++){
+    //         for(int j = 0; j < src->ne[1]; j++){
+    //             const void * srow = (const void *)(cdata + i * src->nb[2] + src->nb[1] * j);
+    //             // const void * srow = (const void *)(cdata + i * src->ne[1] * 2 + j * src->ne[0] * 2);
+    //             for(int l = 0; l < 2; l++){
+    //                 for(int k = 0; k < src->ne[0]/2; k++){
+    //                     const float srow_j = (src->type == GGML_TYPE_F32) ? ((const float*)srow)[2*k + l] : GGML_FP16_TO_FP32(((const ggml_fp16_t*)srow)[k*2+l]);
+    //                     tmp.push_back(srow_j);
+    //                 }
+    //             }
+    //             //0, 2, 4, 6, 8, 10,,,, 126
+    //             //0, 1, 2, 3, 4, 5,,,,, 63 * 2
+
+    //             //1, 3, 5, 7, 9, ,,,, 127
+    //             //64, 65, 66, 67, ,,,,,127  %64 + -64
+    //             //2*0+1, 2*1+1, 2*2+1, 2*3+1   2*63+1
+    //         }
+    //     }
+    //     FILE *fp = fopen("t_k.bin", "w");
+    //     fwrite(tmp.data(), 1, tmp.size() * sizeof(float), fp);
+    //     fclose(fp);
+    //     // GGML_ASSERT(false);
+    // }
 
     int it = 0;
     while (cdata < data_end) {
@@ -6419,11 +6520,12 @@ void ggml_compute_forward_pool_2d(
 
                 for (int ky = 0; ky < k1; ++ky) {
                     if (iy + ky < 0 || iy + ky >= src->ne[1]) continue;
-                    // const void * srow = (const void *)(cdata + src->nb[1] * (iy + ky));
-                    const void * srow = (const void *)(cdata + src->ne[0] * (iy + ky) * ggml_type_size(src->type));
+                    const void * srow = (const void *)(cdata + src->nb[1] * (iy + ky));
+                    // const void * srow = (const void *)(cdata + src->ne[0] * (iy + ky) * ggml_type_size(src->type));
                     for (int kx = 0; kx < k0; ++kx) {
                         int j = ix + kx;
                         if (j < 0 || j >= src->ne[0]) continue;
+                        // j = j < 64 ? j * 2 : (j-64)*2+1;
                         const float srow_j = (src->type == GGML_TYPE_F32) ? ((const float*)srow)[j] : GGML_FP16_TO_FP32(((const ggml_fp16_t*)srow)[j]);
                         // if(it == 0){
                         //     printf("%d %d %d %d, %d, %d: %f\n", oy, s1, iy, ky, j, src->nb[1], srow_j);
@@ -6447,8 +6549,8 @@ void ggml_compute_forward_pool_2d(
             }
         }
 
-        // cdata  += src->nb[2];
-        cdata  += src->ne[0] * src->ne[1] * ggml_type_size(src->type);
+        cdata  += src->nb[2];
+        // cdata  += src->ne[0] * src->ne[1] * ggml_type_size(src->type);
         dplane += pa;
     }
     // {
@@ -6459,6 +6561,172 @@ void ggml_compute_forward_pool_2d(
     // }
     // GGML_ASSERT(false);
 }
+
+void ggml_compute_forward_compress_k(
+        const ggml_compute_params * params,
+        ggml_tensor * dst) {
+    
+    const ggml_tensor * src = dst->src[0];
+
+    assert(src->type == GGML_TYPE_F32 || src->type == GGML_TYPE_F16);
+
+    if (params->ith != 0) {
+        return;
+    }
+
+    const int32_t * opts = (const int32_t *)dst->op_params;
+    ggml_op_pool op = static_cast<ggml_op_pool>(opts[0]);
+    const int k0 = opts[1];
+    const int k1 = opts[2];
+    const int s0 = opts[3];
+    const int s1 = opts[4];
+    const int p0 = opts[5];
+    const int p1 = opts[6];
+    const char * cdata = (const char*)src->data;
+    const char * const data_end = cdata + ggml_nbytes(src);
+
+    const int64_t px = dst->ne[0];
+    const int64_t py = dst->ne[1];
+    const int64_t pa = px * py;
+
+    float * dplane = (float *)dst->data;
+
+    const int ka = k0 * k1;
+    const int offset0 = -p0;
+    const int offset1 = -p1;
+    // {
+    //     /*
+    //     flash k: 1
+    //     flash k: 128 4096 2 1
+    //     flash k: 2 512 256 512*/
+    //     printf("pool2d src %d: %d %d %d %d\n", src->type, src->ne[0], src->ne[1], src->ne[2], src->ne[3]);
+    //     printf("pool2d src %d: %d %d %d %d\n", src->type, src->nb[0], src->nb[1], src->nb[2], src->nb[3]);
+    //     printf("pool2d param: %d %d %d %d %d %d\n", k0, k1, s0, s1, p0, p1);
+    //     /*
+    //     pool2d src 1: 128 512 2 1
+    //     pool2d param: 1 32 1 16 0 0
+    //     pool2d dst 0: 128 31 2 1
+    //     */
+    //    printf("name: %s\n", src->name);
+    //     FILE *fp = fopen("pool2d_src.bin", "w");
+    //     fwrite(src->data, 1, ggml_nelements(src) * sizeof(int16_t), fp);
+    //     fclose(fp);
+    //     // GGML_ASSERT(false);
+    // }
+    // ggml_fp16_t * fdata = (ggml_fp16_t*)src->data;
+    // for(int i = 0; i < 32; i++){
+    //     const void * srow = (const void *)(cdata + src->nb[1] * i);
+    //     // printf("%f ", GGML_FP16_TO_FP32(fdata[i * src->ne[0]]));
+    //     printf("%f ", GGML_FP16_TO_FP32(((ggml_fp16_t*)srow)[0]));
+    // }
+    // printf("\n");
+
+    // {
+    //     printf("%d %d %d\n", src->ne[2], src->ne[1], src->ne[0]);
+    //     std::vector<float> tmp;
+    //     size_t offset = 0;
+    //     for(int i = 0; i < src->ne[2]; i++){
+    //         for(int j = 0; j < src->ne[1]; j++){
+    //             const void * srow = (const void *)(cdata + i * src->nb[2] + src->nb[1] * j);
+    //             // const void * srow = (const void *)(cdata + i * src->ne[1] * 2 + j * src->ne[0] * 2);
+    //             for(int l = 0; l < 2; l++){
+    //                 for(int k = 0; k < src->ne[0]/2; k++){
+    //                     const float srow_j = (src->type == GGML_TYPE_F32) ? ((const float*)srow)[2*k + l] : GGML_FP16_TO_FP32(((const ggml_fp16_t*)srow)[k*2+l]);
+    //                     tmp.push_back(srow_j);
+    //                 }
+    //             }
+    //             //0, 2, 4, 6, 8, 10,,,, 126
+    //             //0, 1, 2, 3, 4, 5,,,,, 63 * 2
+
+    //             //1, 3, 5, 7, 9, ,,,, 127
+    //             //64, 65, 66, 67, ,,,,,127  %64 + -64
+    //             //2*0+1, 2*1+1, 2*2+1, 2*3+1   2*63+1
+    //         }
+    //     }
+    //     FILE *fp = fopen("t_k.bin", "w");
+    //     fwrite(tmp.data(), 1, tmp.size() * sizeof(float), fp);
+    //     fclose(fp);
+    //     // GGML_ASSERT(false);
+    // }
+
+    // int it = 0;
+    std::vector<float> tmp;
+    while (cdata < data_end) {
+        for (int oy = 0; oy < py; ++oy) {
+            float * const drow = dplane + oy * px;
+            for (int ox = 0; ox < px; ++ox) {
+                float * const out =  drow + ox;
+                switch (op) {
+                    case GGML_OP_POOL_AVG:     *out = 0;        break;
+                    case GGML_OP_POOL_MAX:     *out = -FLT_MAX; break;
+                    case GGML_OP_POOL_COUNT: GGML_ABORT("fatal error");
+                }
+
+                const int ix = offset0 + ox * s0;
+                const int iy = offset1 + oy * s1;
+
+                for (int ky = 0; ky < k1; ++ky) {
+                    if (iy + ky < 0 || iy + ky >= src->ne[1]) continue;
+                    const void * srow = (const void *)(cdata + src->nb[1] * (iy + ky));
+                    // const void * srow = (const void *)(cdata + src->ne[0] * (iy + ky) * ggml_type_size(src->type));
+                    for (int kx = 0; kx < k0; ++kx) {
+                        int j = ix + kx;
+                        if (j < 0 || j >= src->ne[0]) continue;
+                        j = j < 64 ? j * 2 : (j-64)*2+1;
+                        const float srow_j = (src->type == GGML_TYPE_F32) ? ((const float*)srow)[j] : GGML_FP16_TO_FP32(((const ggml_fp16_t*)srow)[j]);
+                        // if(it == 0){
+                        //     printf("%d %d %d %d, %d, %d: %f\n", oy, s1, iy, ky, j, src->nb[1], srow_j);
+                        // }
+                        switch (op) {
+                            case GGML_OP_POOL_AVG:                     *out += srow_j; break;
+                            case GGML_OP_POOL_MAX: if (srow_j > *out)  *out  = srow_j; break;
+                            case GGML_OP_POOL_COUNT:               GGML_ABORT("fatal error");
+                        }
+                        
+                    }
+                }
+                // if(it == 0){
+                //     printf("\n");
+                // }
+                switch (op) {
+                    case GGML_OP_POOL_AVG:           *out /= ka; break;
+                    case GGML_OP_POOL_MAX:                       break;
+                    case GGML_OP_POOL_COUNT: GGML_ABORT("fatal error");
+                }
+                // ++it;
+                tmp.push_back(*out);
+            }
+        }
+
+        cdata  += src->nb[2];
+        // cdata  += src->ne[0] * src->ne[1] * ggml_type_size(src->type);
+        dplane += pa;
+    }
+    // {
+    //     printf("compress_k %d: %d %d %d %d\n", dst->type, dst->ne[0], dst->ne[1], dst->ne[2], dst->ne[3]);
+    //     FILE *fp = fopen("compress_k.bin", "w");
+    //     fwrite(tmp.data(), 1, ggml_nelements(dst) * sizeof(float), fp);
+    //     fclose(fp);
+    // }
+    // GGML_ASSERT(false);
+    {
+        dst->nb[0] = 4;
+        dst->nb[1] = dst->ne[0] * 2 * dst->nb[0];
+        dst->nb[2] = dst->ne[0] * dst->nb[0];
+        dst->nb[3] = dst->nb[1];
+        for(int i = 0; i < dst->ne[2]; i++){
+            for(int j = 0; j < dst->ne[1]; j++){
+                char* data = (char*)dst->data + i * dst->nb[2] + j * dst->nb[1];
+                float* src_data = tmp.data() + i * dst->ne[1] * dst->ne[0] + j * dst->ne[0];
+                for(int k = 0; k < dst->ne[0] / 2; k++){
+                    ((float*)data)[2*k] = src_data[k];
+                    ((float*)data)[2*k+1] = src_data[k + dst->ne[0] / 2];
+                }
+            }
+        }
+    }
+}
+
 
 // ggml_compute_forward_pool_2d_back
 
@@ -7479,6 +7747,7 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
         // permute(0, 2, 1, 3)
         memcpy((char *) dst->data + (i3*ne2*ne1 + i2 + i1*ne1)*nb1, VKQ32, nb1);
     }
+    // GGML_ASSERT(false);
 }
 
 void ggml_compute_forward_block_sparse_attn_ext(
@@ -7516,18 +7785,25 @@ void ggml_compute_forward_transform_score(
     // printf("score dtype = %d, %d\n", score->type, score->data);
 
     const int init_blocks = 1;
-    const int local_blocks = 2;
+    const int local_blocks = 4;
     //set inf in init_blocks and -inf in local_blocks
     for(int i = 0; i < score->ne[2]; i++){
         for(int j = 0; j < score->ne[1]; j++){
             for(int ii = 0; ii < init_blocks; ii++){
-                ggml_set_f32_nd(score, ii, j, i, 0, FLT_MAX);
+                ggml_set_f32_nd(score, ii, j, i, 0, INFINITY);
             }
             for(int li = 0; li < local_blocks; li++){
-                ggml_set_f32_nd(score, score->ne[0] - local_blocks + li, j, i, 0, -FLT_MAX);
+                ggml_set_f32_nd(score, score->ne[0] - local_blocks + li, j, i, 0, -INFINITY);
             }
         }
     }
+    // {
+    //     printf("score %d: %d %d %d %d\n", score->type, score->ne[0], score->ne[1], score->ne[2], score->ne[3]);
+    //     FILE *fp = fopen("score.bin", "w");
+    //     fwrite(score->data, 1, ggml_nelements(score) * sizeof(float), fp);
+    //     fclose(fp);
+    //     GGML_ASSERT(false);
+    // }
 }
 
 // ggml_compute_forward_flash_attn_back

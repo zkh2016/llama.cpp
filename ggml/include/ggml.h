@@ -486,6 +486,7 @@ extern "C" {
         GGML_OP_CONV_TRANSPOSE_2D,
         GGML_OP_POOL_1D,
         GGML_OP_POOL_2D,
+        GGML_OP_COMPRESS_K,
         GGML_OP_POOL_2D_BACK,
         GGML_OP_UPSCALE, // nearest interpolate
         GGML_OP_PAD,
@@ -1726,6 +1727,19 @@ extern "C" {
     // the result will have 2*p0 padding for the first dimension
     // and 2*p1 padding for the second dimension
     GGML_API struct ggml_tensor * ggml_pool_2d(
+            struct ggml_context * ctx,
+            struct ggml_tensor  * a,
+            enum ggml_op_pool     op,
+            int                   k0,
+            int                   k1,
+            int                   s0,
+            int                   s1,
+            float                 p0,
+            float                 p1);
+
+    // the result will have 2*p0 padding for the first dimension
+    // and 2*p1 padding for the second dimension
+    GGML_API struct ggml_tensor * ggml_compress_k(
             struct ggml_context * ctx,
             struct ggml_tensor  * a,
             enum ggml_op_pool     op,

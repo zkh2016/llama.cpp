@@ -1449,6 +1449,26 @@ UseGgmlGemm2:;
 
         current_chunk = atomic_fetch_add_explicit(&params->threadpool->current_chunk, 1, memory_order_relaxed);
     }
+
+    // printf("%s\n", src0->name);
+    // if(strcmp(src0->name, "compress_k-96") == 0) {
+    //     printf("q type %d, k type %d\n", src1->type, src0->type);
+    //     printf("q:%d %d %d %d\n", src1->ne[0], src1->ne[1], src1->ne[2], src1->ne[3]);
+    //     printf("q:%d %d %d %d\n", src1->nb[0], src1->nb[1], src1->nb[2], src1->nb[3]);
+    //     printf("k:%d %d %d %d\n", src0->ne[0], src0->ne[1], src0->ne[2], src0->ne[3]);
+    //     printf("k:%d %d %d %d\n", src0->nb[0], src0->nb[1], src0->nb[2], src0->nb[3]);
+    //     printf("kq:%d %d %d %d\n", dst->ne[0], dst->ne[1], dst->ne[2], dst->ne[3]);
+    //     FILE *fp_q = fopen("q.bin", "w");
+    //     fwrite(src1->data, 1, ggml_nelements(src1) * sizeof(float), fp_q);
+    //     fclose(fp_q);
+    //     FILE *fp_k = fopen("k.bin", "w");
+    //     fwrite(src0->data, 1, ggml_nelements(src0) * sizeof(float), fp_k);
+    //     fclose(fp_k);
+    //     FILE *fp_o = fopen("kq.bin", "w");
+    //     fwrite(dst->data, 1, sizeof(float) * ggml_nelements(dst), fp_o);
+    //     fclose(fp_o);
+    //     // GGML_ASSERT(false);
+    // }
 }
 
 // ggml_compute_forward_mul_mat_id
@@ -1946,6 +1966,10 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
             {
                 ggml_compute_forward_pool_2d(params, tensor);
             } break;
+        case GGML_OP_COMPRESS_K:
+            {
+                ggml_compute_forward_compress_k(params, tensor);
+            } break;
         case GGML_OP_POOL_2D_BACK:
             {
                 ggml_compute_forward_pool_2d_back(params, tensor);
@@ -2287,6 +2311,7 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
             } break;
         case GGML_OP_POOL_1D:
         case GGML_OP_POOL_2D:
+        case GGML_OP_COMPRESS_K:
         case GGML_OP_POOL_2D_BACK:
             {
                 n_tasks = 1;

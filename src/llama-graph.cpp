@@ -161,6 +161,11 @@ void llm_graph_input_out_ids::set_input(const llama_ubatch * ubatch) {
             } else {
                 GGML_ASSERT(n_outputs == 0);
             }
+            // printf("out_ids: ");
+            // for(int i = 0; i < n_tokens; i++){
+            //     printf("%d ", data[i]);
+            // }
+            // printf("\n");
         }
     }
 }
@@ -1383,8 +1388,10 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
             {
                 const int kernel_size = 32;
                 const int kernel_stride = 16;
-                compress_k = ggml_pool_2d(ctx0, k, GGML_OP_POOL_AVG, 1, kernel_size, 1, kernel_stride, 0, 0);
                 static int il = 0;
+                cb(k, "compress_k_in", il);
+                // compress_k = ggml_pool_2d(ctx0, k, GGML_OP_POOL_AVG, 1, kernel_size, 1, kernel_stride, 0, 0);
+                compress_k = ggml_compress_k(ctx0, k, GGML_OP_POOL_AVG, 1, kernel_size, 1, kernel_stride, 0, 0);
                 cb(compress_k, "compress_k", il++);
             }
 
@@ -1428,7 +1435,7 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
                 // printf("kq:%d %d %d %d\n", kq->ne[0], kq->ne[1], kq->ne[2], kq->ne[3]);
                 // printf("kq:%d %d %d %d\n", kq->nb[0], kq->nb[1], kq->nb[2], kq->nb[3]);
                 // ggml_tensor* new_kq = ggml_reshape_4d(ctx0, kq, kq->ne[0] * kq->ne[1] * k->ne[2], groups, 1, 1);
-                ggml_tensor* new_kq = ggml_reshape_4d(ctx0, kq, kq->ne[0], kq->ne[1], k->ne[2], groups);
+                ggml_tensor* new_kq = ggml_reshape_4d(ctx0, kq, kq->ne[0], kq->ne[1], groups, k->ne[2]);
                 // printf("before sum kq:%d %d %d %d\n", new_kq->ne[0], new_kq->ne[1], new_kq->ne[2], new_kq->ne[3]);
                 // printf("before sum kq:%d %d %d %d\n", new_kq->nb[0], new_kq->nb[1], new_kq->nb[2], new_kq->nb[3]);
                 // new_kq = ggml_sum_rows(ctx0, ggml_transpose(ctx0, new_kq));
@@ -1473,6 +1480,11 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
                                     hparams.attn_soft_cap ? hparams.f_attn_logit_softcapping : 0.0f);
 
             ggml_block_sparse_attn_ext_set_prec(cur, GGML_PREC_F32);
+            
+            // cur = ggml_flash_attn_ext(ctx0, q, k, v, kq_mask, kq_scale, hparams.f_max_alibi_bias,
+            //                       hparams.attn_soft_cap ? hparams.f_attn_logit_softcapping : 0.0f);
+
+            // ggml_flash_attn_ext_set_prec(cur, GGML_PREC_F32);
         }
 
         if (v_mla) {
@@ -1669,10 +1681,12 @@ ggml_tensor * llm_graph_context::build_attn(
 
     ggml_tensor * k =
         ggml_view_3d(ctx0, kv_self->k_l[il],
-                n_embd_head_k, n_kv, n_head_kv,
-                ggml_row_size(kv_self->k_l[il]->type, n_embd_k_gqa),
-                ggml_row_size(kv_self->k_l[il]->type, n_embd_head_k),
-                0);
+                n_embd_head_k, n_kv, n_head_kv, //128, 512, 2
+                ggml_row_size(kv_self->k_l[il]->type, n_embd_k_gqa),//256*2
+                ggml_row_size(kv_self->k_l[il]->type, n_embd_head_k),//128*2
+                0);//[128, 512, 2, 1]: [2, 512, 256, 512]
+    // printf("n_embd_head_k = %d, n_embd_k_gqa = %d, n_kv = %d, n_head_kv = %d\n", n_embd_head_k, n_embd_k_gqa, n_kv, n_head_kv);
+    // printf("row_size= %d, %d\n", ggml_row_size(kv_self->k_l[il]->type, n_embd_k_gqa), ggml_row_size(kv_self->k_l[il]->type, n_embd_head_k));
     //cb(k, "k", il);
 
     ggml_tensor * v = !v_trans ?

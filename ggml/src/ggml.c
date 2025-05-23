@@ -920,6 +920,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
     "CONV_TRANSPOSE_2D",
     "POOL_1D",
     "POOL_2D",
+    "COMPRESS_K",
     "POOL_2D_BACK",
     "UPSCALE",
     "PAD",
@@ -956,7 +957,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
     "OPT_STEP_ADAMW",
 };
 
-static_assert(GGML_OP_COUNT == 85, "GGML_OP_COUNT != 85");
+static_assert(GGML_OP_COUNT == 86, "GGML_OP_COUNT != 86");
 
 static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "none",
@@ -1018,6 +1019,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "conv_transpose_2d(x)",
     "pool_1d(x)",
     "pool_2d(x)",
+    "compress_k(x)"
     "pool_2d_back(x)",
     "upscale(x)",
     "pad(x)",
@@ -1054,7 +1056,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "adamw(x)",
 };
 
-static_assert(GGML_OP_COUNT == 85, "GGML_OP_COUNT != 85");
+static_assert(GGML_OP_COUNT == 86, "GGML_OP_COUNT != 86");
 
 static_assert(GGML_OP_POOL_COUNT == 2, "GGML_OP_POOL_COUNT != 2");
 
@@ -2227,10 +2229,11 @@ struct ggml_tensor * ggml_sum_first_dim(
         struct ggml_context * ctx,
         struct ggml_tensor  * a) {
     int64_t ne[GGML_MAX_DIMS] = { 1 };
-    for (int i = 0; i < GGML_MAX_DIMS-1; ++i) {
+    for (int i = 0; i < GGML_MAX_DIMS-2; ++i) {
         ne[i] = a->ne[i];
     }
     ne[GGML_MAX_DIMS-1] = 1;
+    ne[GGML_MAX_DIMS-2] = a->ne[GGML_MAX_DIMS-1];
 
     struct ggml_tensor * result = ggml_new_tensor(ctx, a->type, GGML_MAX_DIMS, ne);
 
@@ -3187,12 +3190,12 @@ struct ggml_tensor * ggml_view_2d(
 struct ggml_tensor * ggml_view_3d(
         struct ggml_context * ctx,
         struct ggml_tensor  * a,
-        int64_t               ne0,
-        int64_t               ne1,
-        int64_t               ne2,
-        size_t                nb1,
-        size_t                nb2,
-        size_t                offset) {
+        int64_t               ne0, //128
+        int64_t               ne1, //512
+        int64_t               ne2, //2
+        size_t                nb1, //512
+        size_t                nb2, //
+        size_t                offset) { //0
     const int64_t ne[3] = { ne0, ne1, ne2 };
 
     struct ggml_tensor * result = ggml_view_impl(ctx, a, 3, ne, offset);
@@ -4166,7 +4169,10 @@ struct ggml_tensor * ggml_pool_2d(
         a->ne[2],
         a->ne[3],
     };
+    // printf("%d %d %d %d -> %d %d %d %d\n", a->ne[0], a->ne[1], a->ne[2], a->ne[3], ne[0], ne[1], ne[2], ne[3]);
+    
     result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
+    // printf("%d %d %d %d -> %d %d %d %d\n", a->nb[0], a->nb[1], a->nb[2], a->nb[3], result->nb[0], result->nb[1], result->nb[2], result->nb[3]);
 
     int32_t params[] = { op, k0, k1, s0, s1, p0, p1 };
     ggml_set_op_params(result, params, sizeof(params));
@@ -4176,6 +4182,41 @@ struct ggml_tensor * ggml_pool_2d(
 
     return result;
 }
+
+
+// ggml_compress_k
+
+struct ggml_tensor * ggml_compress_k(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * a,
+        enum ggml_op_pool     op,
+        int                   k0,
+        int                   k1,
+        int                   s0,
+        int                   s1,
+        float                 p0,
+        float                 p1) {
+    struct ggml_tensor * result;
+    const int64_t ne[4] = {
+        ggml_calc_pool_output_size(a->ne[0], k0, s0, p0),
+        ggml_calc_pool_output_size(a->ne[1], k1, s1, p1),
+        a->ne[2],
+        a->ne[3],
+    };
+    // printf("%d %d %d %d -> %d %d %d %d\n", a->ne[0], a->ne[1], a->ne[2], a->ne[3], ne[0], ne[1], ne[2], ne[3]);
+    
+    result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
+    // printf("%d %d %d %d -> %d %d %d %d\n", a->nb[0], a->nb[1], a->nb[2], a->nb[3], result->nb[0], result->nb[1], result->nb[2], result->nb[3]);
+
+    int32_t params[] = { op, k0, k1, s0, s1, p0, p1 };
+    ggml_set_op_params(result, params, sizeof(params));
+
+    result->op     = GGML_OP_COMPRESS_K;
+    result->src[0] = a;
+
+    return result;
+}
+
 
 struct ggml_tensor * ggml_pool_2d_back(
         struct ggml_context * ctx,
@@ -4391,10 +4432,10 @@ struct ggml_tensor * ggml_flash_attn_ext(
     GGML_ASSERT(ggml_can_mul_mat(k, q));
     // TODO: check if vT can be multiplied by (k*qT)
 
-    printf("flash k: %d\n", k->type);
-    printf("flash k: %d %d %d %d\n", k->ne[0], k->ne[1], k->ne[2], k->ne[3]);
-    printf("flash k: %d %d %d %d\n", k->nb[0], k->nb[1], k->nb[2], k->nb[3]);
-    GGML_ASSERT(false);
+    // printf("flash k: %d\n", k->type);
+    // printf("flash k: %d %d %d %d\n", k->ne[0], k->ne[1], k->ne[2], k->ne[3]);
+    // printf("flash k: %d %d %d %d\n", k->nb[0], k->nb[1], k->nb[2], k->nb[3]);
+    // GGML_ASSERT(false);
 
     if (mask) {
         GGML_ASSERT(ggml_is_contiguous(mask));
