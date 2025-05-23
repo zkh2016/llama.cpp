@@ -7785,16 +7785,25 @@ void ggml_compute_forward_transform_score(
     // printf("score dtype = %d, %d\n", score->type, score->data);
 
     const int init_blocks = 1;
-    const int local_blocks = 4;
+    const int local_blocks = 2;
+    const int kernel_stride = 16;
     //set inf in init_blocks and -inf in local_blocks
-    for(int i = 0; i < score->ne[2]; i++){
-        for(int j = 0; j < score->ne[1]; j++){
+    for(int i = 0; i < score->ne[2]; i++){ //n_kv
+        for(int j = 0; j < score->ne[1]; j++){ //seq_l_q
+            for(int k = 0; k < score->ne[0]; k++){ // seq_l_k after compressed
+                if(k > j/64){
+                    ggml_set_f32_nd(score, k, j, i, 0, -INFINITY);
+                }
+                if(j/64 - local_blocks < k && k <= j/64){
+                    ggml_set_f32_nd(score, k, j, i, 0, -INFINITY);
+                }
+            }
             for(int ii = 0; ii < init_blocks; ii++){
                 ggml_set_f32_nd(score, ii, j, i, 0, INFINITY);
             }
-            for(int li = 0; li < local_blocks; li++){
-                ggml_set_f32_nd(score, score->ne[0] - local_blocks + li, j, i, 0, -INFINITY);
-            }
+            // for(int li = 0; li < local_blocks; li++){
+            //     ggml_set_f32_nd(score, score->ne[0] - local_blocks + li, j, i, 0, -INFINITY);
+            // }
         }
     }
     // {
