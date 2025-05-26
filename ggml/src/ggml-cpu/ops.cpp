@@ -4793,9 +4793,11 @@ void ggml_compute_forward_sparse_soft_max(
 
     float scale    = 1.0f;
     float max_bias = 0.0f;
+    int n_tokens = 0;
 
     memcpy(&scale,    (float *) dst->op_params + 0, sizeof(float));
     memcpy(&max_bias, (float *) dst->op_params + 1, sizeof(float));
+    memcpy(&n_tokens, (int*)dst->op_params + 2, sizeof(int));
 
     // TODO: handle transposed/permuted matrices
 
@@ -4848,7 +4850,7 @@ void ggml_compute_forward_sparse_soft_max(
     // GGML_ASSERT(false);
     const int kernel_size = 32;
     const int kernel_stride = 16;
-    int real_k = (ne01 - kernel_size) / kernel_stride + 1;
+    int real_k = (n_tokens - kernel_size) / kernel_stride + 1;
 
     for (int i1 = ir0; i1 < ir1; i1++) {
         // ALiBi

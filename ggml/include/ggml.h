@@ -1415,7 +1415,8 @@ extern "C" {
             struct ggml_tensor  * a,
             struct ggml_tensor  * mask,
             float                 scale,
-            float                 max_bias);
+            float                 max_bias,
+            int                   n_tokens);
 
     GGML_API struct ggml_tensor * ggml_soft_max_ext_back(
             struct ggml_context * ctx,

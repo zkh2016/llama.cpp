@@ -1389,11 +1389,11 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
             {
                 const int kernel_size = 32;
                 const int kernel_stride = 16;
-                static int il = 0;
-                cb(k, "compress_k_in", il);
+                // static int il = 0;
+                // cb(k, "compress_k_in", il);
                 // compress_k = ggml_pool_2d(ctx0, k, GGML_OP_POOL_AVG, 1, kernel_size, 1, kernel_stride, 0, 0);
                 compress_k = ggml_compress_k(ctx0, k, GGML_OP_POOL_AVG, 1, kernel_size, 1, kernel_stride, 0, 0);
-                cb(compress_k, "compress_k", il++);
+                // cb(compress_k, "compress_k", il++);
             }
 
             //attention
@@ -1426,7 +1426,7 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
                     kq = ggml_add(ctx0, kq, kq_b);
                 }
 
-                kq = ggml_sparse_soft_max_ext(ctx0, kq, kq_mask, kq_scale, hparams.f_max_alibi_bias);
+                kq = ggml_sparse_soft_max_ext(ctx0, kq, kq_mask, kq_scale, hparams.f_max_alibi_bias, total_tokens);
             } 
 
             //reduce head_dim

@@ -3495,7 +3495,8 @@ struct ggml_tensor * ggml_sparse_soft_max_ext(
         struct ggml_tensor  * a,
         struct ggml_tensor  * mask,
         float                 scale,
-        float                 max_bias) {
+        float                 max_bias,
+        int                   n_tokens) {
     GGML_ASSERT(ggml_is_contiguous(a));
 
     if (mask) {
@@ -3514,6 +3515,7 @@ struct ggml_tensor * ggml_sparse_soft_max_ext(
 
     float params[] = { scale, max_bias };
     ggml_set_op_params(result, params, sizeof(params));
+    ggml_set_op_params_i32(result, 2, n_tokens);
 
     result->op     = GGML_OP_SPARSE_SOFT_MAX;
     result->src[0] = a;
