@@ -7180,6 +7180,13 @@ static void ggml_compute_forward_argsort_f32(
             }
         }
     }
+    // {
+    //     printf("topk %d: %d %d %d %d\n", dst->type, dst->ne[0], dst->ne[1], dst->ne[2], dst->ne[3]);
+    //     FILE * fp = fopen("topk_idx.bin", "w");
+    //     fwrite(dst->data, 1, ggml_nelements(dst) * sizeof(int), fp);
+    //     fclose(fp);
+    //     GGML_ASSERT(false);
+    // }
 }
 
 void ggml_compute_forward_argsort(
@@ -7478,6 +7485,17 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
     //     v->nb[0], v->nb[1], v->nb[2], v->nb[3]
     // );
 
+    // {
+    //     printf("q: %d %d %d %d\n", q->ne[0], q->ne[1], q->ne[2], q->ne[3]);
+    //     printf("q: %d %d %d %d\n", q->nb[0], q->nb[1], q->nb[2], q->nb[3]);
+    //     printf("k-ne %d: %d %d %d %d\n", k->type, k->ne[0], k->ne[1], k->ne[2], k->ne[3]);
+    //     printf("k-nb: %d %d %d %d\n", k->nb[0], k->nb[1], k->nb[2], k->nb[3]);
+
+    //     FILE *fp = fopen("q.bin", "w");
+    //     fwrite(q->data, 1, ggml_nelements(q) * sizeof(float), fp);
+    //     fclose(fp);
+    // }
+
     // input tensor rows must be contiguous
     GGML_ASSERT(nbq0 == ggml_type_size(q->type));
     GGML_ASSERT(nbk0 == ggml_type_size(k->type));
@@ -7554,6 +7572,8 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
         // FILE *fp = fopen("topk_idx.bin", "w");
         // printf("%d %d %d %d\n", topk_idx->ne[0], topk_idx->ne[1], topk_idx->ne[2], topk_idx->ne[3]);
         // std::vector<int> tmp;
+        const int local_blocks = 2;
+        const int init_blocks = 1;
         char* topk_idx_data = (char*)topk_idx->data;
         for(int i = 0; i < topk_idx->ne[2]; i++){ //groups
             for(int j = 0; j < topk_idx->ne[1]; j++){ //seq_l_q
@@ -7561,18 +7581,30 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
                     const int q_id = j / block_size;
                     int topk_id = ((int*)(topk_idx_data + i * topk_idx->nb[2] + j * topk_idx->nb[1]))[l];
                     //topk_idx_data[i * topk_idx->ne[0]*topk_idx->ne[1] + j * topk_idx->ne[0] + l];
-                    if(topk_id >= q_id){
-                        //topk_idx_data[i * topk_idx->ne[0]*topk_idx->ne[1] + j * topk_idx->ne[0] + l] = -1;
-                        topk_id = -1;
-                        ((int*)(topk_idx_data + i * topk_idx->nb[2] + j * topk_idx->nb[1]))[l] = topk_id;
+                    
+                    // if(topk_id > q_id){
+                    //     ggml_set_i32_nd(topk_idx, l, j, i, 0, -1);
+                    // }
+                    // if(q_id - local_blocks < topk_id && topk_id <= q_id ){
+                    if(q_id - local_blocks < topk_id && topk_id >= init_blocks){
+                        ggml_set_i32_nd(topk_idx, l, j, i, 0, -1);
                     }
+                   
                     // printf("%d ", topk_id);
                     // tmp.push_back(topk_id);
                 }
                 // printf("\n");
             }
         }
-
+        
+        // {
+        //     printf("topk %d: %d %d %d %d\n", topk_idx->type, topk_idx->ne[0], topk_idx->ne[1], topk_idx->ne[2], topk_idx->ne[3]);
+        //     printf("topk %d: %d %d %d %d\n", topk_idx->type, topk_idx->nb[0], topk_idx->nb[1], topk_idx->nb[2], topk_idx->nb[3]);
+        //     FILE * fp = fopen("topk_idx.bin", "w");
+        //     fwrite(topk_idx->data, 1, 2 * 370 * 8 * sizeof(int), fp);
+        //     fclose(fp);
+        //     // GGML_ASSERT(false);
+        // }
         // fwrite(tmp.data(), 1, tmp.size() * sizeof(int), fp);
         // fclose(fp);
         // GGML_ASSERT(false);
@@ -7620,6 +7652,8 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
         // loop over n_kv and n_head_kv
         // ref: https://arxiv.org/pdf/2112.05682.pdf
         auto f = [&](int ic){
+                // ic = ic < 64 ? ic * 2 : (ic-64)*2+1;
+
                 skip_all = false;
                 const float mv = mp ? slope*GGML_FP16_TO_FP32(mp[ic]) : 0.0f;
                 if (mv == -INFINITY) {
@@ -7747,6 +7781,12 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
         // permute(0, 2, 1, 3)
         memcpy((char *) dst->data + (i3*ne2*ne1 + i2 + i1*ne1)*nb1, VKQ32, nb1);
     }
+    // {
+    //     FILE *fp = fopen("block_sparse_out.bin", "w");
+    //     printf("block_sparse %d: %d %d %d %d\n", dst->type, dst->ne[0], dst->ne[1], dst->ne[2], dst->ne[3]);
+    //     fwrite(dst->data, 1, ggml_nelements(dst) * sizeof(float), fp);
+    //     fclose(fp);
+    // }
     // GGML_ASSERT(false);
 }
 
@@ -7811,7 +7851,7 @@ void ggml_compute_forward_transform_score(
     //     FILE *fp = fopen("score.bin", "w");
     //     fwrite(score->data, 1, ggml_nelements(score) * sizeof(float), fp);
     //     fclose(fp);
-    //     GGML_ASSERT(false);
+    //     // GGML_ASSERT(false);
     // }
 }
 
