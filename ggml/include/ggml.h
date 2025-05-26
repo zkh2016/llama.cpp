@@ -1881,6 +1881,7 @@ extern "C" {
             int                   topk,
             int                   block_size,
             int                   block_window_size,
+            int                   n_tokens,
             float                 scale,
             float                 max_bias,
             float                 logit_softcap);
@@ -1900,7 +1901,8 @@ extern "C" {
                 int                   s0,
                 int                   s1,
                 float                 p0,
-                float                 p1);
+                float                 p1,
+                int                   n_tokens);
 
 
     GGML_API struct ggml_tensor * ggml_ssm_conv(

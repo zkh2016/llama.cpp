@@ -7538,6 +7538,7 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
     int topk            = 0;
     int block_size      = 0;
     int block_window_size = 0;
+    int n_tokens = 0;
 
     memcpy(&scale,         (float *) dst->op_params + 0, sizeof(float));
     memcpy(&max_bias,      (float *) dst->op_params + 1, sizeof(float));
@@ -7546,6 +7547,8 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
     memcpy(&block_size,      (int*) dst->op_params + 4, sizeof(int));
     memcpy(&block_window_size, (int*) dst->op_params + 5, sizeof(int));
     memcpy(&topk,         (int*) dst->op_params + 6, sizeof(int));
+    memcpy(&n_tokens,         (int*) dst->op_params + 7, sizeof(int));
+
 
     // printf("topk = %d, block_size= %d, block_window_size = %d\n", topk, block_size, block_window_size);
 
@@ -7578,7 +7581,7 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
         for(int i = 0; i < topk_idx->ne[2]; i++){ //groups
             for(int j = 0; j < topk_idx->ne[1]; j++){ //seq_l_q
                 for(int l = 0; l < topk_idx->ne[0]; l++){ //top_k
-                    const int q_id = j / block_size;
+                    const int q_id = (j + n_tokens - topk_idx->ne[1]) / block_size;
                     int topk_id = ((int*)(topk_idx_data + i * topk_idx->nb[2] + j * topk_idx->nb[1]))[l];
                     //topk_idx_data[i * topk_idx->ne[0]*topk_idx->ne[1] + j * topk_idx->ne[0] + l];
                     
@@ -7728,7 +7731,7 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
         // topk_ids (k, seq_l_q, num_k_head, batch)
         // int *topk_data = (int*)(topk_idx->data) + ik3 * topk_idx->nb[3] + ik2 * topk_idx->nb[2] + iq1 * topk_idx->nb[1];
         char * topk_data = ((char*)topk_idx->data) + ik3 * topk_idx->nb[3] + ik2 * topk_idx->nb[2] + iq1 * topk_idx->nb[1];
-        const int q_block_idx = iq1 + nek1 - neq1;
+        const int q_block_idx = iq1 + n_tokens - neq1;
         const int k_window_right = (q_block_idx + block_size - 1) / block_size;
         int k_window_left = block_window_size > 0 ? (q_block_idx - 1) / block_size - block_window_size + 1 : k_window_right + 1;
         k_window_left = k_window_left < 0 ? 0 : k_window_left;
@@ -7819,6 +7822,9 @@ void ggml_compute_forward_transform_score(
     // printf("after pool 2d\n");
 
     ggml_tensor* score = dst;
+
+    const int32_t * opts = (const int32_t *)dst->op_params;
+    const int n_tokens = opts[7];
     
     // printf("score: %d %d %d %d\n", score->ne[0], score->ne[1], score->ne[2], score->ne[3]);
     // printf("score: %d %d %d %d\n", score->nb[0], score->nb[1], score->nb[2], score->nb[3]);
@@ -7826,15 +7832,17 @@ void ggml_compute_forward_transform_score(
 
     const int init_blocks = 1;
     const int local_blocks = 2;
-    const int kernel_stride = 16;
+    const int block_size = 64;
     //set inf in init_blocks and -inf in local_blocks
     for(int i = 0; i < score->ne[2]; i++){ //n_kv
         for(int j = 0; j < score->ne[1]; j++){ //seq_l_q
+            int q_id = (j + n_tokens - score->ne[1]) / block_size;
             for(int k = 0; k < score->ne[0]; k++){ // seq_l_k after compressed
-                if(k > j/64){
-                    ggml_set_f32_nd(score, k, j, i, 0, -INFINITY);
-                }
-                if(j/64 - local_blocks < k && k <= j/64){
+                // if(k > j/64){
+                //     ggml_set_f32_nd(score, k, j, i, 0, -INFINITY);
+                // }
+                // if(j/64 - local_blocks < k && k <= j/64){
+                if(q_id - local_blocks < k){
                     ggml_set_f32_nd(score, k, j, i, 0, -INFINITY);
                 }
             }

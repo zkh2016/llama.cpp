@@ -4497,6 +4497,7 @@ struct ggml_tensor * ggml_block_sparse_attn_ext(
         int                   topk,
         int                   block_size,
         int                   block_window_size,
+        int                   n_tokens,
         float                 scale,
         float                 max_bias,
         float                 logit_softcap) {
@@ -4513,6 +4514,7 @@ struct ggml_tensor * ggml_block_sparse_attn_ext(
     ggml_set_op_params_i32(result, 4, block_size);
     ggml_set_op_params_i32(result, 5, block_window_size);
     ggml_set_op_params_i32(result, 6, topk);
+    ggml_set_op_params_i32(result, 7, n_tokens);
 
     result->op     = GGML_OP_BLOCK_SPARSE_ATTN_EXT;
     result->src[0] = q;
@@ -4551,7 +4553,8 @@ struct ggml_tensor * ggml_transform_score(
         int                   s0,
         int                   s1,
         float                 p0,
-        float                 p1) {
+        float                 p1,
+        int                   n_tokens) {
     struct ggml_tensor * result;
     const int64_t ne[4] = {
         ggml_calc_pool_output_size(a->ne[0], k0, s0, p0),
@@ -4561,7 +4564,7 @@ struct ggml_tensor * ggml_transform_score(
     };
     result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
 
-    int32_t params[] = { op, k0, k1, s0, s1, p0, p1 };
+    int32_t params[] = { op, k0, k1, s0, s1, p0, p1, n_tokens};
     ggml_set_op_params(result, params, sizeof(params));
 
 

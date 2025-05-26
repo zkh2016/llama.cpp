@@ -1321,7 +1321,8 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
          ggml_tensor * kq_mask,
          ggml_tensor * v_mla,
              bool      v_trans,
-             float     kq_scale) const {
+             float     kq_scale,
+        const int total_tokens) const {
   //const int64_t n_embd_k_gqa = hparams.n_embd_k_gqa(il);
   //const int64_t n_embd_v_gqa = hparams.n_embd_v_gqa(il);
 
@@ -1453,7 +1454,7 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
                 const int pad = 1;
                 // printf("pool2d\n");
                 // printf("kq:%d %d %d %d\n", kq->ne[0], kq->ne[1], kq->ne[2], kq->ne[3]);
-                score = ggml_transform_score(ctx0, kq, GGML_OP_POOL_MAX, kernel_size, 1, kernel_stride, 1, pad, 0);
+                score = ggml_transform_score(ctx0, kq, GGML_OP_POOL_MAX, kernel_size, 1, kernel_stride, 1, pad, 0, total_tokens);
                 // score = ggml_pool_2d(ctx0, kq, GGML_OP_POOL_MAX, kernel_size, 1, kernel_stride, 1, pad, 0);
                 // printf("score: %d %d %d %d\n", score->ne[0], score->ne[1], score->ne[2], score->ne[3]);
                 // printf("score: %d %d %d %d\n", score->nb[0], score->nb[1], score->nb[2], score->nb[3]);
@@ -1476,7 +1477,7 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
         //stage2
         {
             // printf("blocks sparse attn\n");
-            cur = ggml_block_sparse_attn_ext(ctx0, q, k, v, topk_idx, topk, block_size, block_window_size, kq_scale, hparams.f_max_alibi_bias,
+            cur = ggml_block_sparse_attn_ext(ctx0, q, k, v, topk_idx, topk, block_size, block_window_size, total_tokens, kq_scale, hparams.f_max_alibi_bias,
                                     hparams.attn_soft_cap ? hparams.f_attn_logit_softcapping : 0.0f);
 
             ggml_block_sparse_attn_ext_set_prec(cur, GGML_PREC_F32);
@@ -1669,7 +1670,7 @@ ggml_tensor * llm_graph_context::build_attn(
 
     const auto & kq_mask = is_swa ? inp->get_kq_mask_swa() : inp->get_kq_mask();
 
-    const auto n_kv = kv_self->n;
+    const auto n_kv = kv_self->n;    
 
     const int64_t n_head_kv = hparams.n_head_kv(il);
 
@@ -1702,7 +1703,7 @@ ggml_tensor * llm_graph_context::build_attn(
                 0);
 
     // ggml_tensor * cur = build_attn_mha(gf, q, k, v, kq_b, kq_mask, v_mla, v_trans, kq_scale);
-    ggml_tensor * cur = build_block_sparse_attn_mha(gf, q, k, v, kq_b, kq_mask, v_mla, v_trans, kq_scale);
+    ggml_tensor * cur = build_block_sparse_attn_mha(gf, q, k, v, kq_b, kq_mask, v_mla, v_trans, kq_scale, kv_self->get_n_tokens());
     cb(cur, "kqv_out", il);
 
     if (wo) {
