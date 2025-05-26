@@ -1426,7 +1426,7 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
                     kq = ggml_add(ctx0, kq, kq_b);
                 }
 
-                kq = ggml_soft_max_ext(ctx0, kq, kq_mask, kq_scale, hparams.f_max_alibi_bias);
+                kq = ggml_sparse_soft_max_ext(ctx0, kq, kq_mask, kq_scale, hparams.f_max_alibi_bias);
             } 
 
             //reduce head_dim

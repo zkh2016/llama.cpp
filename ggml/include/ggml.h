@@ -475,6 +475,7 @@ extern "C" {
         GGML_OP_DIAG_MASK_INF,
         GGML_OP_DIAG_MASK_ZERO,
         GGML_OP_SOFT_MAX,
+        GGML_OP_SPARSE_SOFT_MAX,
         GGML_OP_SOFT_MAX_BACK,
         GGML_OP_ROPE,
         GGML_OP_ROPE_BACK,
@@ -1403,6 +1404,13 @@ extern "C" {
     // mask is optional
     // max_bias = 0.0f for no ALiBi
     GGML_API struct ggml_tensor * ggml_soft_max_ext(
+            struct ggml_context * ctx,
+            struct ggml_tensor  * a,
+            struct ggml_tensor  * mask,
+            float                 scale,
+            float                 max_bias);
+            
+    GGML_API struct ggml_tensor * ggml_sparse_soft_max_ext(
             struct ggml_context * ctx,
             struct ggml_tensor  * a,
             struct ggml_tensor  * mask,

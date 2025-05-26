@@ -1922,6 +1922,10 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
             {
                 ggml_compute_forward_soft_max(params, tensor);
             } break;
+        case GGML_OP_SPARSE_SOFT_MAX:
+            {
+                ggml_compute_forward_sparse_soft_max(params, tensor);
+            } break;
         case GGML_OP_SOFT_MAX_BACK:
             {
                 ggml_compute_forward_soft_max_ext_back(params, tensor);
@@ -2298,6 +2302,7 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
                 n_tasks = 1; //TODO
             } break;
         case GGML_OP_SOFT_MAX:
+        case GGML_OP_SPARSE_SOFT_MAX:
             {
                 n_tasks = MIN(n_threads, ggml_nrows(node->src[0]));
             } break;
@@ -2770,6 +2775,7 @@ struct ggml_cplan ggml_graph_plan(
                         }
                     } break;
                 case GGML_OP_SOFT_MAX:
+                case GGML_OP_SPARSE_SOFT_MAX:
                 case GGML_OP_ROPE:
                 case GGML_OP_ROPE_BACK:
                     {

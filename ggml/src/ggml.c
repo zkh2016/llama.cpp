@@ -909,6 +909,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
     "DIAG_MASK_INF",
     "DIAG_MASK_ZERO",
     "SOFT_MAX",
+    "SPARSE_SOFT_MAX",
     "SOFT_MAX_BACK",
     "ROPE",
     "ROPE_BACK",
@@ -957,7 +958,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
     "OPT_STEP_ADAMW",
 };
 
-static_assert(GGML_OP_COUNT == 86, "GGML_OP_COUNT != 86");
+static_assert(GGML_OP_COUNT == 87, "GGML_OP_COUNT != 87");
 
 static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "none",
@@ -1008,6 +1009,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "diag_mask_inf(x)",
     "diag_mask_zero(x)",
     "soft_max(x)",
+    "sparse_soft_max(x)"
     "soft_max_back(x)",
     "rope(x)",
     "rope_back(x)",
@@ -1056,7 +1058,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "adamw(x)",
 };
 
-static_assert(GGML_OP_COUNT == 86, "GGML_OP_COUNT != 86");
+static_assert(GGML_OP_COUNT == 87, "GGML_OP_COUNT != 87");
 
 static_assert(GGML_OP_POOL_COUNT == 2, "GGML_OP_POOL_COUNT != 2");
 
@@ -3486,6 +3488,38 @@ struct ggml_tensor * ggml_soft_max_ext(
         float                 scale,
         float                 max_bias) {
     return ggml_soft_max_impl(ctx, a, mask, scale, max_bias, false);
+}
+
+struct ggml_tensor * ggml_sparse_soft_max_ext(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * a,
+        struct ggml_tensor  * mask,
+        float                 scale,
+        float                 max_bias) {
+    GGML_ASSERT(ggml_is_contiguous(a));
+
+    if (mask) {
+        GGML_ASSERT(mask->type == GGML_TYPE_F16 || mask->type == GGML_TYPE_F32);
+        GGML_ASSERT(ggml_is_contiguous(mask));
+        GGML_ASSERT(ggml_is_matrix(mask));
+        GGML_ASSERT(mask->ne[0] == a->ne[0]);
+        GGML_ASSERT(mask->ne[1] >= a->ne[1]);
+    }
+
+    if (max_bias > 0.0f) {
+        GGML_ASSERT(mask);
+    }
+
+    struct ggml_tensor * result = ggml_dup_tensor(ctx, a);
+
+    float params[] = { scale, max_bias };
+    ggml_set_op_params(result, params, sizeof(params));
+
+    result->op     = GGML_OP_SPARSE_SOFT_MAX;
+    result->src[0] = a;
+    result->src[1] = mask;
+
+    return result;
 }
 
 // ggml_soft_max_ext_back
