@@ -1583,16 +1583,24 @@ llm_graph_input_attn_kv_unified * llm_graph_context::build_attn_inp_kv_unified()
     int kernel_size = 32;
     int kernel_stride = 16;
 
-    // const auto n_kv = kv_self->n;
-    const auto n_kv = (kv_self->n - kernel_size) / kernel_stride + 1;
+    // // const auto n_kv = kv_self->n;
+    // const auto n_kv = (kv_self->n - kernel_size) / kernel_stride + 1;
+    int n_kv = kv_self->n;
+    if(cparams.sparse){
+        n_kv = (kv_self->n - kernel_size) / kernel_stride + 1;
+    }
 
     inp->self_kq_mask = ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, n_kv, GGML_PAD(n_tokens, GGML_KQ_MASK_PAD));
     //cb(inp->self_kq_mask, "KQ_mask", -1);
     ggml_set_input(inp->self_kq_mask);
     // printf("build kv mask: %d %d\n", n_kv, n_tokens);
 
-    // inp->self_kq_mask_cnv = cparams.flash_attn ? ggml_cast(ctx0, inp->self_kq_mask, GGML_TYPE_F16) : inp->self_kq_mask;
-    inp->self_kq_mask_cnv = inp->self_kq_mask;
+    if(cparams.sparse){
+        inp->self_kq_mask_cnv = inp->self_kq_mask;
+    }else{
+        inp->self_kq_mask_cnv = cparams.flash_attn ? ggml_cast(ctx0, inp->self_kq_mask, GGML_TYPE_F16) : inp->self_kq_mask;
+    }
+    
 
     if (hparams.n_swa_pattern > 1) {
         GGML_ASSERT(hparams.n_swa > 0);
@@ -1702,8 +1710,13 @@ ggml_tensor * llm_graph_context::build_attn(
                 ggml_element_size(kv_self->v_l[il])*n_ctx*n_embd_head_v,
                 0);
 
-    // ggml_tensor * cur = build_attn_mha(gf, q, k, v, kq_b, kq_mask, v_mla, v_trans, kq_scale);
-    ggml_tensor * cur = build_block_sparse_attn_mha(gf, q, k, v, kq_b, kq_mask, v_mla, v_trans, kq_scale, kv_self->get_n_tokens());
+    ggml_tensor * cur;
+    if(cparams.sparse){
+        cur = build_block_sparse_attn_mha(gf, q, k, v, kq_b, kq_mask, v_mla, v_trans, kq_scale, kv_self->get_n_tokens());
+
+    }else{
+        cur = build_attn_mha(gf, q, k, v, kq_b, kq_mask, v_mla, v_trans, kq_scale);
+    } 
     cb(cur, "kqv_out", il);
 
     if (wo) {

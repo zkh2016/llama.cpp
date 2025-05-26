@@ -364,6 +364,7 @@ extern "C" {
         bool flash_attn;  // whether to use flash attention [EXPERIMENTAL]
         bool no_perf;     // whether to measure performance timings
         bool op_offload;  // whether to offload host tensor operations to device
+        bool sparse;      // whether use sparse compute
     };
 
     // model quantization parameters

@@ -322,6 +322,7 @@ struct common_params {
     bool flash_attn        = false; // flash attention
     bool no_perf           = false; // disable performance metrics
     bool ctx_shift         = true;  // context shift on inifinite text generation
+    bool sparse            = false; // sparse compute
 
     bool input_prefix_bos  = false; // prefix BOS to user inputs, preceding input_prefix
     bool use_mmap          = true;  // use mmap for faster loads
