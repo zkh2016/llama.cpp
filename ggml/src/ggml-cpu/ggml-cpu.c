@@ -2316,11 +2316,15 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
             } break;
         case GGML_OP_POOL_1D:
         case GGML_OP_POOL_2D:
-        case GGML_OP_COMPRESS_K:
         case GGML_OP_POOL_2D_BACK:
             {
                 n_tasks = 1;
             } break;
+        case GGML_OP_COMPRESS_K:
+            {
+                n_tasks = n_threads;
+            }break;
+
         case GGML_OP_UPSCALE:
         case GGML_OP_PAD:
         case GGML_OP_PAD_REFLECT_1D:

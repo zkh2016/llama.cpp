@@ -1335,25 +1335,6 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
     const auto n_tokens = q->ne[1];
     const auto n_head   = q->ne[2];
     const auto n_kv     = k->ne[1];
-    // printf("n_kv = %d, n_head = %d\n", n_kv, n_head);
-    // printf("q: %d %d %d %d\n", q->ne[0], q->ne[1], q->ne[2], q->ne[3]);
-    // printf("k-ne %d: %d %d %d %d\n", k->type, k->ne[0], k->ne[1], k->ne[2], k->ne[3]);
-    // printf("k-nb: %d %d %d %d\n", k->nb[0], k->nb[1], k->nb[2], k->nb[3]);
-    // printf("v: %d %d %d %d\n", v->ne[0], v->ne[1], v->ne[2], v->ne[3]);
-    /*
-    load:
-    q: 128 512 32 1
-    k: 128 4096 2 1
-    v: 4096 128 2 1
-    compute:
-    q: 128 14 32 1
-    k: 128 32 2 1
-    v: 32 128 2 1
-
-    q: 128 1 32 1
-    k: 128 32 2 1
-    v: 32 128 2 1
-    */
 
     ggml_tensor * cur;
 
@@ -1378,7 +1359,7 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
         }
 
         ggml_tensor* topk_idx;
-        const int topk = 4;
+        int topk = 4;
         const int block_size = 64;
         const int block_window_size = 2;
 
@@ -1429,59 +1410,30 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
             {
                 //kq: [seq_l_k, seq_l_q, n_head_k * group, 1] -> [seq_l_k, seq_l_q, n_head_k]
                 const int groups = q->ne[2] / k->ne[2];
-                // printf("kq:%d %d %d %d\n", kq->ne[0], kq->ne[1], kq->ne[2], kq->ne[3]);
-                // printf("kq:%d %d %d %d\n", kq->nb[0], kq->nb[1], kq->nb[2], kq->nb[3]);
-                // ggml_tensor* new_kq = ggml_reshape_4d(ctx0, kq, kq->ne[0] * kq->ne[1] * k->ne[2], groups, 1, 1);
                 ggml_tensor* new_kq = ggml_reshape_4d(ctx0, kq, kq->ne[0], kq->ne[1], groups, k->ne[2]);
-                // printf("before sum kq:%d %d %d %d\n", new_kq->ne[0], new_kq->ne[1], new_kq->ne[2], new_kq->ne[3]);
-                // printf("before sum kq:%d %d %d %d\n", new_kq->nb[0], new_kq->nb[1], new_kq->nb[2], new_kq->nb[3]);
-                // new_kq = ggml_sum_rows(ctx0, ggml_transpose(ctx0, new_kq));
                 kq = ggml_sum_first_dim(ctx0, new_kq);
-                // printf("kq:%d %d %d %d\n", kq->ne[0], kq->ne[1], kq->ne[2], kq->ne[3]);
-                // kq = ggml_reshape_4d(ctx0, new_kq, kq->ne[0], kq->ne[1], k->ne[2], 1);
             }
 
             //transform score
             ggml_tensor* score;
             {
-                // printf("transform score\n");
                 const int kernel_size = 5;
                 const int kernel_stride = 4;
                 const int pad = 1;
-                // printf("pool2d\n");
-                // printf("kq:%d %d %d %d\n", kq->ne[0], kq->ne[1], kq->ne[2], kq->ne[3]);
                 score = ggml_transform_score(ctx0, kq, GGML_OP_POOL_MAX, kernel_size, 1, kernel_stride, 1, pad, 0, total_tokens);
-                // score = ggml_pool_2d(ctx0, kq, GGML_OP_POOL_MAX, kernel_size, 1, kernel_stride, 1, pad, 0);
-                // printf("score: %d %d %d %d\n", score->ne[0], score->ne[1], score->ne[2], score->ne[3]);
-                // printf("score: %d %d %d %d\n", score->nb[0], score->nb[1], score->nb[2], score->nb[3]);
-                // printf("score dtype = %d, %d\n", score->type, score->data);
             }
 
-            // printf("topk\n");
             //topk
+            topk = std::min(topk, (int)score->ne[0]);
             topk_idx = ggml_top_k(ctx0, score, topk); // [topk, seq_l_q, n_kv]
-            // printf("topk_idx : %d\n", topk_idx->type);
-            // printf("%d\n", score->ne[0]);
-            // printf("%d %d %d %d\n", topk_idx->ne[0], topk_idx->ne[1], topk_idx->ne[2], topk_idx->ne[3]);
-            // printf("%d %d %d %d\n", topk_idx->nb[0], topk_idx->nb[1], topk_idx->nb[2], topk_idx->nb[3]);
-            // GGML_ASSERT(false);
-            // printf("after topk\n");
-            //set -1 if topk_idx >= q_idx
-            //fused in block_sparse_attn
         }
 
         //stage2
         {
-            // printf("blocks sparse attn\n");
             cur = ggml_block_sparse_attn_ext(ctx0, q, k, v, topk_idx, topk, block_size, block_window_size, total_tokens, kq_scale, hparams.f_max_alibi_bias,
                                     hparams.attn_soft_cap ? hparams.f_attn_logit_softcapping : 0.0f);
 
             ggml_block_sparse_attn_ext_set_prec(cur, GGML_PREC_F32);
-            
-            // cur = ggml_flash_attn_ext(ctx0, q, k, v, kq_mask, kq_scale, hparams.f_max_alibi_bias,
-            //                       hparams.attn_soft_cap ? hparams.f_attn_logit_softcapping : 0.0f);
-
-            // ggml_flash_attn_ext_set_prec(cur, GGML_PREC_F32);
         }
 
         if (v_mla) {
