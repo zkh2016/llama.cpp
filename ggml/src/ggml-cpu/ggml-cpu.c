@@ -2212,7 +2212,6 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
         case GGML_OP_COS:
         case GGML_OP_SUM:
         case GGML_OP_SUM_ROWS:
-        case GGML_OP_SUM_FIRST_DIM:
         case GGML_OP_MEAN:
         case GGML_OP_ARGMAX:
             {
@@ -2321,6 +2320,7 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
                 n_tasks = 1;
             } break;
         case GGML_OP_COMPRESS_K:
+        case GGML_OP_SUM_FIRST_DIM:
             {
                 n_tasks = n_threads;
             }break;

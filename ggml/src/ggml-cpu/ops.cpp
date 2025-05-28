@@ -4843,26 +4843,16 @@ void ggml_compute_forward_sparse_soft_max(
         ggml_vec_scale_f32(nc, wp, scale);
         bool mask_all = ne01 > 1;
         {
-            if (use_f16) {
-                for (int i = 0; i < nc; ++i) {
-                    if(ne01 > 1){
-                        wp[i] += slope * (i < (iq - 15) / 16 && i < real_k ? 0.0 : -100.0);
-                        if(i < (iq - 15) / 16 && i < real_k) mask_all = false;
-                    }else{
-                        wp[i] += slope * (i < real_k ? 0.0 : -100.0);
-                    }
-                   
-                }
-            } else {
-                for (int i = 0; i < nc; ++i) {
-                    if(ne01 > 1){
-                        wp[i] += slope * (i < (iq - 15) / 16 && i < real_k ? 0.0 : -100.0); 
-                        if(i < (iq - 15) / 16 && i < real_k) mask_all = false;
-                    }else{
-                        wp[i] += slope * (i < real_k ? 0.0 : -100.0);
-                    }
+            int qid = (iq - kernel_stride + 1) / kernel_stride;
+            for (int i = 0; i < nc; ++i) {
+                if(ne01 > 1){
+                    wp[i] += slope * (i < qid && i < real_k ? 0.0 : -100.0); 
+                    if(i < qid && i < real_k) mask_all = false;
+                }else{
+                    wp[i] += slope * (i < real_k ? 0.0 : -100.0);
                 }
             }
+           
         }
 
 #ifndef NDEBUG
@@ -6527,7 +6517,7 @@ void ggml_compute_forward_compress_k(
         const ggml_compute_params * params,
         ggml_tensor * dst) {
     
-    const ggml_tensor * src = dst->src[0];//[head_dim, seq_l_k, n_head_k]
+    const ggml_tensor * src = dst->src[0];//[head_dim, seq_l_k, n_head_k, 1]
 
     assert(src->type == GGML_TYPE_F32 || src->type == GGML_TYPE_F16);
 
@@ -7424,23 +7414,24 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
     GGML_ASSERT((                            q_to_vec_dot) && "fattn: unsupported K-type");
     GGML_ASSERT((v->type == GGML_TYPE_F32 || v_to_float  ) && "fattn: unsupported V-type");
 
+    const int local_blocks = 64;
+    const int init_blocks = 1;
     {//preprocess topk_idx
         
-        const int local_blocks = 2;
-        const int init_blocks = 1;
-        char* topk_idx_data = (char*)topk_idx->data;
-        for(int i = 0; i < topk_idx->ne[2]; i++){ //groups
-            for(int j = 0; j < topk_idx->ne[1]; j++){ //seq_l_q
-                for(int l = 0; l < topk_idx->ne[0]; l++){ //top_k
-                    const int q_id = (j + n_tokens - topk_idx->ne[1]) / block_size;
-                    int topk_id = ((int*)(topk_idx_data + i * topk_idx->nb[2] + j * topk_idx->nb[1]))[l];
+       
+        // char* topk_idx_data = (char*)topk_idx->data;
+        // for(int i = 0; i < topk_idx->ne[2]; i++){ //groups
+        //     for(int j = 0; j < topk_idx->ne[1]; j++){ //seq_l_q
+        //         for(int l = 0; l < topk_idx->ne[0]; l++){ //top_k
+        //             const int q_id = (j + n_tokens - topk_idx->ne[1]) / block_size;
+        //             int topk_id = ((int*)(topk_idx_data + i * topk_idx->nb[2] + j * topk_idx->nb[1]))[l];
                     
-                    if(q_id - local_blocks < topk_id && topk_id >= init_blocks){
-                        ggml_set_i32_nd(topk_idx, l, j, i, 0, -1);
-                    }
-                }
-            }
-        }
+        //             if(q_id - local_blocks < topk_id && topk_id >= init_blocks){
+        //                 ggml_set_i32_nd(topk_idx, l, j, i, 0, -1);
+        //             }
+        //         }
+        //     }
+        // }
     }
 
     // loop over n_batch and n_head
@@ -7579,7 +7570,11 @@ static void ggml_compute_forward_block_sparse_attn_ext_f16(
 
         // printf("topk block\n");
         for(int topi = 0; topi < topk; ++topi) {
+            int qid = q_block_idx / block_size;
             int id = ((int*)topk_data)[topi];
+            if(qid - local_blocks < id && id >= init_blocks){
+                continue;
+            }
             if(id == -1 || in_window(id) != -1){
                 continue;
             }
@@ -7649,7 +7644,7 @@ void ggml_compute_forward_transform_score(
     const int n_tokens = opts[7];
     
     const int init_blocks = 1;
-    const int local_blocks = 2;
+    const int local_blocks = 64;
     const int block_size = 64;
     // //set inf in init_blocks and -inf in local_blocks
     // for(int i = 0; i < score->ne[2]; i++){ //n_kv

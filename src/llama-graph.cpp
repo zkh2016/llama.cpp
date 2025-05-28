@@ -1359,9 +1359,9 @@ ggml_tensor * llm_graph_context::build_block_sparse_attn_mha(
         }
 
         ggml_tensor* topk_idx;
-        int topk = 4;
+        int topk = 64;
         const int block_size = 64;
-        const int block_window_size = 2;
+        const int block_window_size = 32;
 
         //stage1
         ggml_tensor* compress_k;
