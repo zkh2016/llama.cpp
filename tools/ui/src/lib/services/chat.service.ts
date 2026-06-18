@@ -6,6 +6,7 @@ import {
 	ATTACHMENT_LABEL_MCP_PROMPT,
 	ATTACHMENT_LABEL_MCP_RESOURCE,
 	LEGACY_AGENTIC_REGEX,
+	REASONING_EFFORT_TOKENS,
 	SETTINGS_KEYS,
 	API_CHAT,
 	API_SLOTS,
@@ -33,7 +34,6 @@ import type {
 import { modelsStore } from '$lib/stores/models.svelte';
 import { settingsStore } from '../stores/settings.svelte';
 import { capImageDataURLSize } from '../utils/cap-img-size';
-import { MEGAPIXELS_TO_PIXELS } from '$lib/constants/image-size';
 
 function getAudioInputFormat(mimeType: string): AudioInputFormat {
 	const normalizedMimeType = mimeType.trim().toLowerCase();
@@ -162,6 +162,8 @@ export class ChatService {
 			// Config options
 			disableReasoningParsing,
 			excludeReasoningFromContext,
+			enableThinking,
+			reasoningEffort,
 			continueFinalMessage
 		} = options;
 
@@ -242,6 +244,18 @@ export class ChatService {
 		requestBody.reasoning_format = disableReasoningParsing
 			? ReasoningFormat.NONE
 			: ReasoningFormat.AUTO;
+
+		const reasoningBudgetTokens =
+			enableThinking && reasoningEffort ? (REASONING_EFFORT_TOKENS[reasoningEffort] ?? -1) : -1;
+
+		requestBody.chat_template_kwargs = {
+			...(requestBody.chat_template_kwargs ?? {}),
+			enable_thinking: enableThinking
+		};
+
+		if (reasoningBudgetTokens >= 0) {
+			requestBody.thinking_budget_tokens = reasoningBudgetTokens;
+		}
 
 		// arms the budget sampler so reasoning can be ended at runtime via the control endpoint
 		requestBody.reasoning_control = true;
@@ -946,10 +960,11 @@ export class ChatService {
 
 		for (const image of imageFiles) {
 			const maxImageResolution = settingsStore.getConfig(SETTINGS_KEYS.MAX_IMAGE_RESOLUTION);
-			let base64Url = image.base64Url;
-			if (maxImageResolution > 1 / MEGAPIXELS_TO_PIXELS) {
-				base64Url = await capImageDataURLSize(image.base64Url, maxImageResolution);
-			}
+
+			// Caps the resolution and bakes the jpeg exif orientation in one pass,
+			// untouched images pass through as is
+			const base64Url = await capImageDataURLSize(image.base64Url, maxImageResolution);
+
 			contentParts.push({
 				type: ContentPartType.IMAGE_URL,
 				image_url: { url: base64Url }

@@ -165,6 +165,14 @@ static std::vector<std::function<void(const common_chat_template & tmpl, autopar
               LOG_DBG(ANSI_ORANGE "[Patch: Apriel 1.6]\n" ANSI_RESET);
           }
       },
+      // template uses the JSON {name, parameters} tool instruction, emits the OpenAI function wrapper
+      [](const common_chat_template & tmpl, autoparser & analysis) -> void {
+          if (tmpl.src.find("Respond in the format {\"name\": function name") != std::string::npos &&
+              tmpl.src.find("Do not use variables.") != std::string::npos) {
+              analysis.tools.format.openai_wrapper_trigger = true;
+              LOG_DBG(ANSI_ORANGE "[Patch: JSON name/parameters tool instruction]\n" ANSI_RESET);
+          }
+      },
       // MiniCPM5 - tagged XML tool calls: <function name="NAME"><param name="KEY">VALUE</param>...</function>
       // The differential analyzer mis-infers this attribute-keyed format (function name and
       // parameter names live inside the tag as quoted attributes), so pin it explicitly.
@@ -195,7 +203,7 @@ static std::vector<std::function<void(const common_chat_template & tmpl, autopar
               analysis.preserved_tokens.push_back("</param>");
               LOG_DBG(ANSI_ORANGE "[Patch: MiniCPM5 tagged tool calls]\n" ANSI_RESET);
           }
-      },
+      }
 
     });
 
@@ -1260,8 +1268,8 @@ void analyze_tools::extract_argument_name_markers() {
             left_result.tags["pre"] == right_result.tags["pre"] &&
             left_result.tags["suffix"] == right_result.tags["suffix"]) {
             // Name is inside a structure (e.g., JSON key): prefix is the shared wrapper
-            arguments.name_prefix = trim_whitespace(left_result.tags["pre"]);
-            arguments.name_suffix = trim_leading_whitespace(left_result.tags["suffix"]);
+            arguments.name_prefix = left_result.tags["pre"];
+            arguments.name_suffix = left_result.tags["suffix"];
         } else if (diff.left.substr(0, ARG_FIRST.length()) == ARG_FIRST && diff.right.substr(0, ARG_SECOND.length()) == ARG_SECOND) {
             // Name is directly in the diff: prefix comes from last marker in diff.prefix
             auto pre_parser = build_tagged_peg_parser([&](common_peg_parser_builder & p) {
@@ -1346,8 +1354,7 @@ void analyze_tools::extract_argument_value_markers() {
                 value_suffix = value_suffix.substr(0, end_marker_pos);
             }
         }
-        value_suffix = trim_leading_whitespace(value_suffix);
-        if (!value_suffix.empty()) {
+        if (!trim_whitespace(value_suffix).empty()) {
             arguments.value_suffix = value_suffix;
         }
     }
