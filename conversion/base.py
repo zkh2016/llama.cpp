@@ -1438,9 +1438,6 @@ class TextModel(ModelBase):
         if chkhsh == "d4540891389ea895b53b399da6ac824becc30f2fba0e9ddbb98f92e55ca0e97c":
             # ref: https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
             res = "qwen2"
-        if chkhsh == "2360c4549c2e7b27e6a2a0a8414392a41e370e0d398037a67c71850a515b0e4e":
-            # ref: MiniCPM5-2.8B (LlamaTokenizerFast / BPE, qwen2-style pre-tokenizer)
-            res = "qwen2"
         if chkhsh == "1444df51289cfa8063b96f0e62b1125440111bc79a52003ea14b6eac7016fd5f":
             # ref: https://huggingface.co/openbmb/MiniCPM-V-4_6
             res = "qwen35"
