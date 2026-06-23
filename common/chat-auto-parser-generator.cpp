@@ -396,6 +396,9 @@ common_peg_parser analyze_tools::build_tool_parser_tag_tagged(parser_build_conte
         for (const auto & [param_name, param_schema] : properties.items()) {
             bool is_required = required.find(param_name) != required.end();
 
+            // CDATA-first string value: prefer the CDATA-wrapped form, fall back to plain.
+            // Kept inside p.ac(...) so the upstream stricter end-anchor on value_suffix
+            // still applies.
             auto string_value_parser = p.choice({ cdata_string_value, p.tool_arg_string_value(until_suffix) });
 
             auto arg =
@@ -403,7 +406,7 @@ common_peg_parser analyze_tools::build_tool_parser_tag_tagged(parser_build_conte
                                            arguments.name_suffix) +
                            arguments.value_prefix +
                            (schema_info.resolves_to_string(param_schema) ?
-                                p.ac(p.tool_arg_string_value(until_suffix) +
+                                p.ac(string_value_parser +
                                     p.tool_arg_close(p.literal(arguments.value_suffix)), arguments.value_suffix) :
                                 (p.tool_arg_json_value(p.schema(
                                     p.json(), "tool-" + name + "-arg-" + param_name + "-schema", param_schema, false)) +
